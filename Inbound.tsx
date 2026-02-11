@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { inventoryService } from './inventoryService';
 import { exportTransactionHistory, exportDraftScannedList } from './reportService';
-import { Scan, Plus, Trash2, CheckCircle, Warehouse, AlertTriangle, XCircle, ArrowRight, History, ChevronDown, ChevronUp, Calendar, Box, FileSpreadsheet } from 'lucide-react';
+import { Scan, Plus, Trash2, CheckCircle, Warehouse, AlertTriangle, XCircle, ArrowRight, History, ChevronDown, ChevronUp, Calendar, Box, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import { playSound } from './sound';
 import { ProductionPlan, UnitStatus, Transaction } from './types';
 
@@ -62,17 +62,12 @@ export const Inbound: React.FC = () => {
         setCurrentSerial('');
         return;
       }
-      if (unit.isReimported) {
-        playSound('error');
-        setMessage({ type: 'error', text: `Lỗi: Mã ${scannedCode} đã từng tái nhập.` });
-        setCurrentSerial('');
-        return;
-      }
+      // Lưu ý: isReimported là trạng thái vĩnh viễn của máy nếu đã từng tái nhập
       playSound('success');
-      setMessage({ type: 'warning', text: `Phát hiện TÁI NHẬP: Mã ${scannedCode} (Đã bán trước đó)` });
+      setMessage({ type: 'warning', text: `Phát hiện TÁI NHẬP: Mã ${scannedCode} (Máy đã từng xuất bán)` });
     } else {
       playSound('success');
-      setMessage({ type: 'success', text: `OK: ${scannedCode}` });
+      setMessage({ type: 'success', text: `Hợp lệ: ${scannedCode}` });
     }
 
     setSerialList([...serialList, scannedCode]);
@@ -174,27 +169,58 @@ export const Inbound: React.FC = () => {
              </div>
              <div className="space-y-4">
                 {historyData.map(tx => (
-                  <div key={tx.id} className="border border-slate-200 rounded-lg overflow-hidden hover:border-green-200 transition-colors">
+                  <div key={tx.id} className={`border rounded-lg overflow-hidden transition-colors ${tx.isReimportTx ? 'border-orange-200 hover:border-orange-400' : 'border-slate-200 hover:border-green-200'}`}>
                      <div className="bg-slate-50 p-4 flex justify-between items-center cursor-pointer" onClick={() => setExpandedTx(expandedTx === tx.id ? null : tx.id)}>
                         <div className="flex items-center gap-4">
                           <div className={`p-2 rounded-full ${tx.isReimportTx ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
-                            <Calendar size={18} />
+                            {tx.isReimportTx ? <RefreshCw size={18} /> : <Calendar size={18} />}
                           </div>
                           <div>
                             <div className="font-bold">{new Date(tx.date).toLocaleString('vi-VN')}</div>
-                            <div className="text-sm text-slate-500 flex items-center gap-2">
+                            <div className="text-sm text-slate-500 flex items-center gap-2 flex-wrap">
                               {inventoryService.getProductById(tx.productId)?.model} • {tx.toLocation}
                               {tx.planName && (
                                 <span className="bg-water-50 text-water-700 px-2 py-0.5 rounded text-[10px] font-bold">LÔ: {tx.planName}</span>
                               )}
+                              {tx.isReimportTx && (
+                                <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1">
+                                  <RefreshCw size={10}/> TÁI NHẬP
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-4"><div className="text-right font-bold text-green-600 text-lg">+{tx.quantity}</div><button className="text-slate-400">{expandedTx === tx.id ? <ChevronUp /> : <ChevronDown />}</button></div>
+                        <div className="flex items-center gap-4">
+                          <div className={`text-right font-bold text-lg ${tx.isReimportTx ? 'text-orange-600' : 'text-green-600'}`}>
+                            +{tx.quantity}
+                          </div>
+                          <button className="text-slate-400">
+                            {expandedTx === tx.id ? <ChevronUp /> : <ChevronDown />}
+                          </button>
+                        </div>
                      </div>
-                     {expandedTx === tx.id && <div className="p-4 bg-white border-t grid grid-cols-2 md:grid-cols-4 gap-2">{tx.serialNumbers.map(sn => <div key={sn} className="font-mono text-xs bg-slate-50 p-2 rounded text-center">{sn}</div>)}</div>}
+                     {expandedTx === tx.id && (
+                       <div className="p-4 bg-white border-t">
+                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                           {tx.serialNumbers.map(sn => {
+                             const unit = inventoryService.getUnitBySerial(sn);
+                             return (
+                               <div key={sn} className={`relative font-mono text-xs p-2 rounded text-center border ${unit?.isReimported ? 'bg-orange-50 border-orange-200 text-orange-800' : 'bg-slate-50 border-slate-100'}`}>
+                                 {sn}
+                                 {unit?.isReimported && (
+                                   <div className="absolute -top-1.5 -right-1.5 bg-orange-500 text-white rounded-full p-0.5 shadow-sm" title="Máy tái nhập">
+                                      <RefreshCw size={8}/>
+                                   </div>
+                                 )}
+                               </div>
+                             );
+                           })}
+                         </div>
+                       </div>
+                     )}
                   </div>
                 ))}
+                {historyData.length === 0 && <div className="text-center py-12 text-slate-400 italic">Không tìm thấy dữ liệu nhập kho trong khoảng thời gian này.</div>}
              </div>
          </div>
       )}

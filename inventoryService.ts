@@ -100,6 +100,26 @@ class InventoryService {
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }
 
+  /**
+   * Get transactions filtered by Type and Date Range
+   */
+  getHistoryByDateRange(
+    types: ('INBOUND' | 'OUTBOUND' | 'TRANSFER')[], 
+    startDateStr: string, 
+    endDateStr: string
+  ): Transaction[] {
+    const start = startDateStr ? new Date(startDateStr).setHours(0, 0, 0, 0) : 0;
+    const end = endDateStr ? new Date(endDateStr).setHours(23, 59, 59, 999) : 9999999999999;
+
+    return this.transactions
+      .filter(t => {
+        if (!types.includes(t.type)) return false;
+        const txTime = new Date(t.date).getTime();
+        return txTime >= start && txTime <= end;
+      })
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }
+
   // --- Production Plan Management ---
   getProductionPlans() {
     return this.productionPlans.sort((a, b) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime());
@@ -214,7 +234,18 @@ class InventoryService {
   // --- Operational Methods ---
 
   importUnits(productId: string, serials: string[], location: string) {
-    const newUnits: SerialUnit[] = serials.map(serial => ({
+    // 1. Separate completely new items vs re-imported items
+    const existingUnits = this.units.filter(u => serials.includes(u.serialNumber));
+    const newSerials = serials.filter(s => !existingUnits.some(u => u.serialNumber === s));
+
+    // 2. Validate Existing Units (Must not be NEW/IN-STOCK)
+    const duplicateStock = existingUnits.filter(u => u.status === UnitStatus.NEW);
+    if (duplicateStock.length > 0) {
+      throw new Error(`Mã sau đây đang tồn kho, không thể nhập lại: ${duplicateStock.map(d => d.serialNumber).join(', ')}`);
+    }
+
+    // 3. Create objects for completely new items
+    const newUnits: SerialUnit[] = newSerials.map(serial => ({
       serialNumber: serial,
       productId,
       status: UnitStatus.NEW,
@@ -222,13 +253,25 @@ class InventoryService {
       importDate: new Date().toISOString()
     }));
 
-    const duplicates = newUnits.filter(nu => this.units.some(u => u.serialNumber === nu.serialNumber));
-    if (duplicates.length > 0) {
-      throw new Error(`Phát hiện mã Serial bị trùng: ${duplicates.map(d => d.serialNumber).join(', ')}`);
-    }
-
+    // 4. Update state
+    // Add new units
     this.units = [...this.units, ...newUnits];
+    
+    // Update existing units (Re-import logic: change status back to NEW)
+    this.units = this.units.map(u => {
+      if (serials.includes(u.serialNumber)) {
+        return {
+          ...u,
+          status: UnitStatus.NEW, // Reset status to NEW
+          warehouseLocation: location, // Update new location
+          importDate: new Date().toISOString(), // Update import date (optional: or keep original)
+          // We keep customerName or exportDate in history, but for current status, it is now in stock
+        };
+      }
+      return u;
+    });
 
+    // 5. Create Transaction
     const transaction: Transaction = {
       id: `tx-in-${Date.now()}`,
       type: 'INBOUND',

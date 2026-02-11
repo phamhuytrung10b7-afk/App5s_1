@@ -25,6 +25,6 @@ export const NAV_ITEMS = [
   { label: 'Xuất kho', icon: 'Upload', path: '/outbound' },
   { label: 'Tồn kho', icon: 'Package', path: '/inventory' },
   { label: 'Kiểm tra SX', icon: 'ClipboardCheck', path: '/production-check' },
-  { label: 'Tra cứu Serial', icon: 'Search', path: '/tracking' },
+  { label: 'Tra cứu IMEI', icon: 'Search', path: '/tracking' },
   { label: 'Cấu hình', icon: 'Settings', path: '/settings' },
 ];

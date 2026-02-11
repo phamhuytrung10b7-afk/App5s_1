@@ -1,5 +1,5 @@
 {
   "name": "RO-Master WMS",
-  "description": "Specialized Warehouse Management System for RO Water Purifiers with Serial Number tracking, inventory analytics, and AI-driven insights.",
+  "description": "Specialized Warehouse Management System for RO Water Purifiers with IMEI tracking, inventory analytics, and AI-driven insights.",
   "requestFramePermissions": []
 }

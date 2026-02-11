@@ -1,12 +1,13 @@
 import React from 'react';
 import { inventoryService } from './inventoryService';
+import { exportExcelReport } from './services/reportService';
 import { UnitStatus } from './types';
+import { FileSpreadsheet } from 'lucide-react';
 
 export const Inventory: React.FC = () => {
   const products = inventoryService.getProducts();
   const units = inventoryService.getUnits();
 
-  // Group units by product and status
   const inventoryData = products.map(p => {
     const productUnits = units.filter(u => u.productId === p.id);
     return {
@@ -24,7 +25,12 @@ export const Inventory: React.FC = () => {
           <h2 className="text-2xl font-bold text-slate-800">Trạng thái tồn kho</h2>
           <p className="text-slate-500">Chi tiết theo từng Model và trạng thái.</p>
         </div>
-        <button className="text-water-600 text-sm font-medium hover:underline">Xuất báo cáo (CSV)</button>
+        <button 
+          onClick={exportExcelReport}
+          className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 transition-colors flex items-center gap-2 shadow-sm"
+        >
+          <FileSpreadsheet size={18} /> Xuất Báo cáo Tổng hợp (.xlsx)
+        </button>
       </div>
 
       <div className="grid grid-cols-1 gap-6">
@@ -53,6 +59,12 @@ export const Inventory: React.FC = () => {
               </div>
            </div>
          ))}
+         
+         {inventoryData.length === 0 && (
+            <div className="p-12 text-center text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
+              Chưa có dữ liệu sản phẩm.
+            </div>
+         )}
       </div>
     </div>
   );

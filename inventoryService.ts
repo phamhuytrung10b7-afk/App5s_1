@@ -1,16 +1,7 @@
 
 import { Product, SerialUnit, UnitStatus, Transaction, Warehouse, Customer, ProductionPlan, SalesOrder, SalesOrderItem } from './types';
-import { INITIAL_PRODUCTS, INITIAL_UNITS, INITIAL_TRANSACTIONS, INITIAL_WAREHOUSES, INITIAL_CUSTOMERS } from './constants';
 
-const STORAGE_KEYS = {
-  PRODUCTS: 'RO_MASTER_PRODUCTS',
-  UNITS: 'RO_MASTER_UNITS',
-  TRANSACTIONS: 'RO_MASTER_TRANSACTIONS',
-  WAREHOUSES: 'RO_MASTER_WAREHOUSES',
-  CUSTOMERS: 'RO_MASTER_CUSTOMERS',
-  PLANS: 'RO_MASTER_PLANS',
-  ORDERS: 'RO_MASTER_ORDERS'
-};
+const STORAGE_KEY = 'RO_MASTER_PRO_DATABASE_V2';
 
 class InventoryService {
   private products: Product[] = [];
@@ -22,147 +13,131 @@ class InventoryService {
   private salesOrders: SalesOrder[] = [];
 
   constructor() {
-    this.loadData();
+    this.loadFromStorage();
   }
 
-  // --- PERSISTENCE METHODS ---
-
-  private loadData() {
-    try {
-      const storedProducts = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-      const storedUnits = localStorage.getItem(STORAGE_KEYS.UNITS);
-      const storedTransactions = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
-      const storedWarehouses = localStorage.getItem(STORAGE_KEYS.WAREHOUSES);
-      const storedCustomers = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
-      const storedPlans = localStorage.getItem(STORAGE_KEYS.PLANS);
-      const storedOrders = localStorage.getItem(STORAGE_KEYS.ORDERS);
-
-      this.products = storedProducts ? JSON.parse(storedProducts) : [...INITIAL_PRODUCTS];
-      this.units = storedUnits ? JSON.parse(storedUnits) : [...INITIAL_UNITS];
-      this.transactions = storedTransactions ? JSON.parse(storedTransactions) : [...INITIAL_TRANSACTIONS];
-      this.warehouses = storedWarehouses ? JSON.parse(storedWarehouses) : [...INITIAL_WAREHOUSES];
-      this.customers = storedCustomers ? JSON.parse(storedCustomers) : [...INITIAL_CUSTOMERS];
-      this.productionPlans = storedPlans ? JSON.parse(storedPlans) : [];
-      this.salesOrders = storedOrders ? JSON.parse(storedOrders) : [];
-    } catch (e) {
-      console.error("Failed to load data from storage, falling back to defaults", e);
-      this.resetDatabase(false); // Fallback but don't force reload
+  private loadFromStorage() {
+    const savedData = localStorage.getItem(STORAGE_KEY);
+    if (savedData) {
+      try {
+        const parsed = JSON.parse(savedData);
+        this.products = parsed.products || [];
+        this.units = parsed.units || [];
+        this.transactions = parsed.transactions || [];
+        this.warehouses = parsed.warehouses || [];
+        this.customers = parsed.customers || [];
+        this.productionPlans = parsed.productionPlans || [];
+        this.salesOrders = parsed.salesOrders || [];
+        return;
+      } catch (e) {
+        console.error("Lỗi đọc dữ liệu lưu trữ:", e);
+      }
     }
-  }
-
-  private saveData() {
-    try {
-      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(this.products));
-      localStorage.setItem(STORAGE_KEYS.UNITS, JSON.stringify(this.units));
-      localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(this.transactions));
-      localStorage.setItem(STORAGE_KEYS.WAREHOUSES, JSON.stringify(this.warehouses));
-      localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(this.customers));
-      localStorage.setItem(STORAGE_KEYS.PLANS, JSON.stringify(this.productionPlans));
-      localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(this.salesOrders));
-    } catch (e) {
-      console.error("Failed to save data to storage", e);
-    }
-  }
-
-  // Dangerous: Hard Reset
-  resetDatabase(reload = true) {
-    localStorage.clear();
-    this.products = [...INITIAL_PRODUCTS];
-    this.units = [...INITIAL_UNITS];
-    this.transactions = [...INITIAL_TRANSACTIONS];
-    this.warehouses = [...INITIAL_WAREHOUSES];
-    this.customers = [...INITIAL_CUSTOMERS];
+    // Dữ liệu mặc định nếu kho trống
+    this.products = [];
+    this.units = [];
+    this.transactions = [];
+    this.warehouses = [{ id: 'wh-default', name: 'Kho Tổng', address: 'Trụ sở chính' }];
+    this.customers = [];
     this.productionPlans = [];
     this.salesOrders = [];
-    
-    // Re-save defaults to storage
-    this.saveData();
-
-    if (reload) {
-      window.location.reload();
-    }
+    this.persist();
   }
 
-  // --- GETTERS ---
+  private persist() {
+    const data = {
+      products: this.products,
+      units: this.units,
+      transactions: this.transactions,
+      warehouses: this.warehouses,
+      customers: this.customers,
+      productionPlans: this.productionPlans,
+      salesOrders: this.salesOrders
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }
 
+  resetDatabase() {
+    localStorage.removeItem(STORAGE_KEY);
+    window.location.reload();
+  }
+
+  // GETTERS
   getProducts() { return this.products; }
   getUnits() { return this.units; }
   getTransactions() { return this.transactions; }
   getWarehouses() { return this.warehouses; }
   getCustomers() { return this.customers; }
+  getProductionPlans() { return this.productionPlans; }
+  getSalesOrders() { return this.salesOrders; }
   
   getProductById(id: string) { return this.products.find(p => p.id === id); }
   getUnitBySerial(serial: string) { return this.units.find(u => u.serialNumber === serial); }
-
-  getSerialHistory(serial: string): Transaction[] {
-    return this.transactions
-      .filter(t => t.serialNumbers.includes(serial))
+  
+  getSerialHistory(serial: string) {
+    return this.transactions.filter(t => t.serialNumbers.includes(serial))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }
 
-  /**
-   * Get transactions filtered by Type and Date Range
-   */
-  getHistoryByDateRange(
-    types: ('INBOUND' | 'OUTBOUND' | 'TRANSFER')[], 
-    startDateStr: string, 
-    endDateStr: string
-  ): Transaction[] {
-    const start = startDateStr ? new Date(startDateStr).setHours(0, 0, 0, 0) : 0;
-    const end = endDateStr ? new Date(endDateStr).setHours(23, 59, 59, 999) : 9999999999999;
-
+  getHistoryByDateRange(types: string[], startStr: string, endStr: string): Transaction[] {
+    const start = startStr ? new Date(startStr).setHours(0,0,0,0) : 0;
+    const end = endStr ? new Date(endStr).setHours(23,59,59,999) : 9999999999999;
     return this.transactions
-      .filter(t => {
-        if (!types.includes(t.type)) return false;
-        const txTime = new Date(t.date).getTime();
-        return txTime >= start && txTime <= end;
-      })
+      .filter(t => types.includes(t.type) && new Date(t.date).getTime() >= start && new Date(t.date).getTime() <= end)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }
 
-  // --- Production Plan Management ---
-  getProductionPlans() {
-    return this.productionPlans.sort((a, b) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime());
+  // PRODUCT ACTIONS
+  addProduct(p: Product) { this.products = [...this.products, p]; this.persist(); }
+  updateProduct(id: string, updates: Partial<Product>) {
+    this.products = this.products.map(p => p.id === id ? { ...p, ...updates } : p);
+    this.persist();
   }
-
-  addProductionPlan(name: string, productId: string, serials: string[]) {
-    const newPlan: ProductionPlan = {
-      id: `plan-${Date.now()}`,
-      name,
-      productId,
-      createdDate: new Date().toISOString(),
-      serials
-    };
-    this.productionPlans = [newPlan, ...this.productionPlans];
-    this.saveData();
-    return newPlan;
+  deleteProduct(id: string) {
+    if (this.units.some(u => u.productId === id)) throw new Error("Model này đã có dữ liệu IMEI, không thể xóa.");
+    this.products = this.products.filter(p => p.id !== id);
+    this.persist();
   }
-
-  updateProductionPlan(id: string, name: string, productId: string, serials: string[]) {
-    const index = this.productionPlans.findIndex(p => p.id === id);
-    if (index !== -1) {
-      this.productionPlans[index] = {
-        ...this.productionPlans[index],
-        name,
-        productId,
-        serials
-      };
-      this.saveData();
+  
+  // WAREHOUSE ACTIONS
+  addWarehouse(wh: Warehouse) { this.warehouses = [...this.warehouses, wh]; this.persist(); }
+  updateWarehouse(id: string, updates: Partial<Warehouse>) {
+    this.warehouses = this.warehouses.map(w => w.id === id ? { ...w, ...updates } : w);
+    this.persist();
+  }
+  deleteWarehouse(id: string) {
+    const wh = this.warehouses.find(w => w.id === id);
+    if (wh && this.units.some(u => u.warehouseLocation === wh.name && u.status === UnitStatus.NEW)) {
+      throw new Error("Kho này vẫn còn máy tồn kho.");
     }
+    this.warehouses = this.warehouses.filter(w => w.id !== id);
+    this.persist();
   }
 
-  deleteProductionPlan(id: string) {
-    this.productionPlans = this.productionPlans.filter(p => p.id !== id);
-    this.saveData();
+  // CUSTOMER ACTIONS
+  addCustomer(c: Customer) { this.customers = [...this.customers, c]; this.persist(); }
+  updateCustomer(id: string, updates: Partial<Customer>) {
+    this.customers = this.customers.map(c => c.id === id ? { ...c, ...updates } : c);
+    this.persist();
   }
+  deleteCustomer(id: string) { this.customers = this.customers.filter(c => c.id !== id); this.persist(); }
 
-  // --- Sales Order Management ---
-  getSalesOrders() {
-    return this.salesOrders.sort((a, b) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime());
+  // PRODUCTION PLAN ACTIONS
+  addProductionPlan(name: string, productId: string, serials: string[]) {
+    const plan = { id: `plan-${Date.now()}`, name, productId, createdDate: new Date().toISOString(), serials };
+    this.productionPlans = [plan, ...this.productionPlans];
+    this.persist();
+    return plan;
   }
+  updateProductionPlan(id: string, name: string, productId: string, serials: string[]) {
+    this.productionPlans = this.productionPlans.map(p => p.id === id ? { ...p, name, productId, serials } : p);
+    this.persist();
+  }
+  deleteProductionPlan(id: string) { this.productionPlans = this.productionPlans.filter(p => p.id !== id); this.persist(); }
 
+  // SALES ORDER ACTIONS
   addSalesOrder(code: string, targetName: string, items: SalesOrderItem[], type: 'SALE' | 'TRANSFER', destination?: string) {
-    const newOrder: SalesOrder = {
+    const order: SalesOrder = {
       id: `so-${Date.now()}`,
       code,
       type,
@@ -172,193 +147,52 @@ class InventoryService {
       createdDate: new Date().toISOString(),
       items: items.map(i => ({ ...i, scannedCount: 0 }))
     };
-    this.salesOrders = [newOrder, ...this.salesOrders];
-    this.saveData();
-    return newOrder;
+    this.salesOrders = [order, ...this.salesOrders];
+    this.persist();
+    return order;
   }
+  deleteSalesOrder(id: string) { this.salesOrders = this.salesOrders.filter(o => o.id !== id); this.persist(); }
 
-  deleteSalesOrder(id: string) {
-    this.salesOrders = this.salesOrders.filter(o => o.id !== id);
-    this.saveData();
-  }
+  // CORE OPERATIONS
+  importUnits(productId: string, serials: string[], location: string, planName?: string) {
+    const updatedUnits = [...this.units];
+    let isReimportSession = false;
 
-  // --- CRUD Management Methods ---
-  
-  addProduct(product: Product) {
-    this.products = [...this.products, product];
-    this.saveData();
-  }
-
-  deleteProduct(id: string) {
-    const hasInventory = this.units.some(u => u.productId === id);
-    if (hasInventory) {
-      throw new Error("Không thể xóa Model này vì đang có hàng tồn kho hoặc lịch sử giao dịch.");
-    }
-    this.products = this.products.filter(p => p.id !== id);
-    this.saveData();
-  }
-
-  addWarehouse(warehouse: Warehouse) {
-    this.warehouses = [...this.warehouses, warehouse];
-    this.saveData();
-  }
-
-  deleteWarehouse(id: string) {
-    if (this.warehouses.length <= 1) {
-       throw new Error("Phải giữ lại ít nhất 1 kho trong hệ thống.");
-    }
-    this.warehouses = this.warehouses.filter(w => w.id !== id);
-    this.saveData();
-  }
-
-  addCustomer(customer: Customer) {
-    this.customers = [...this.customers, customer];
-    this.saveData();
-  }
-
-  deleteCustomer(id: string) {
-    this.customers = this.customers.filter(c => c.id !== id);
-    this.saveData();
-  }
-
-  // --- Logic Checks ---
-
-  checkSerialExists(serial: string): boolean {
-    return this.units.some(u => u.serialNumber === serial && u.status !== UnitStatus.SOLD);
-  }
-
-  checkSerialImported(serial: string): boolean {
-    return this.units.some(u => u.serialNumber === serial);
-  }
-
-  // --- Operational Methods ---
-
-  importUnits(productId: string, serials: string[], location: string) {
-    // 1. Separate completely new items vs re-imported items
-    const existingUnits = this.units.filter(u => serials.includes(u.serialNumber));
-    const newSerials = serials.filter(s => !existingUnits.some(u => u.serialNumber === s));
-
-    // 2. Validate Existing Units (Must not be NEW/IN-STOCK)
-    const duplicateStock = existingUnits.filter(u => u.status === UnitStatus.NEW);
-    if (duplicateStock.length > 0) {
-      throw new Error(`Mã sau đây đang tồn kho, không thể nhập lại: ${duplicateStock.map(d => d.serialNumber).join(', ')}`);
-    }
-
-    // 3. Create objects for completely new items
-    const newUnits: SerialUnit[] = newSerials.map(serial => ({
-      serialNumber: serial,
-      productId,
-      status: UnitStatus.NEW,
-      warehouseLocation: location,
-      importDate: new Date().toISOString()
-    }));
-
-    // 4. Update state
-    // Add new units
-    this.units = [...this.units, ...newUnits];
-    
-    // Update existing units (Re-import logic: change status back to NEW)
-    this.units = this.units.map(u => {
-      if (serials.includes(u.serialNumber)) {
-        return {
-          ...u,
-          status: UnitStatus.NEW, // Reset status to NEW
-          warehouseLocation: location, // Update new location
-          importDate: new Date().toISOString(), // Update import date (optional: or keep original)
-          // We keep customerName or exportDate in history, but for current status, it is now in stock
-        };
+    serials.forEach(s => {
+      const idx = updatedUnits.findIndex(u => u.serialNumber === s);
+      if (idx !== -1) {
+        if (updatedUnits[idx].status === UnitStatus.NEW) throw new Error(`Mã ${s} đang tồn kho.`);
+        updatedUnits[idx] = { ...updatedUnits[idx], status: UnitStatus.NEW, warehouseLocation: location, importDate: new Date().toISOString(), isReimported: true };
+        isReimportSession = true;
+      } else {
+        updatedUnits.push({ serialNumber: s, productId, status: UnitStatus.NEW, warehouseLocation: location, importDate: new Date().toISOString(), isReimported: false });
       }
-      return u;
     });
 
-    // 5. Create Transaction
-    const transaction: Transaction = {
-      id: `tx-in-${Date.now()}`,
-      type: 'INBOUND',
-      date: new Date().toISOString(),
-      productId,
-      quantity: serials.length,
-      serialNumbers: serials,
-      toLocation: location
-    };
-    this.transactions = [transaction, ...this.transactions];
-    
-    this.saveData();
-    return transaction;
+    this.units = updatedUnits;
+    const tx: Transaction = { id: `tx-in-${Date.now()}`, type: 'INBOUND', date: new Date().toISOString(), productId, quantity: serials.length, serialNumbers: serials, toLocation: location, isReimportTx: isReimportSession, planName };
+    this.transactions = [tx, ...this.transactions];
+    this.persist();
+    return tx;
   }
 
-  transferUnits(productId: string, serials: string[], toLocation: string) {
-    const invalidSerials = serials.filter(s => {
-      const unit = this.getUnitBySerial(s);
-      return !unit || unit.status === UnitStatus.SOLD || unit.productId !== productId;
-    });
-
-    if (invalidSerials.length > 0) {
-      throw new Error(`Serial không hợp lệ (đã bán hoặc sai model): ${invalidSerials.join(', ')}`);
-    }
-
-    this.units = this.units.map(u => {
-      if (serials.includes(u.serialNumber)) {
-        return {
-          ...u,
-          warehouseLocation: toLocation
-        };
-      }
-      return u;
-    });
-
-    const transaction: Transaction = {
-      id: `tx-tr-${Date.now()}`,
-      type: 'TRANSFER',
-      date: new Date().toISOString(),
-      productId,
-      quantity: serials.length,
-      serialNumbers: serials,
-      toLocation: toLocation
-    };
-    this.transactions = [transaction, ...this.transactions];
-    
-    this.saveData();
-    return transaction;
+  transferUnits(productId: string, serials: string[], toLoc: string) {
+    this.units = this.units.map(u => serials.includes(u.serialNumber) ? { ...u, warehouseLocation: toLoc } : u);
+    const tx: Transaction = { id: `tx-tr-${Date.now()}`, type: 'TRANSFER', date: new Date().toISOString(), productId, quantity: serials.length, serialNumbers: serials, toLocation: toLoc };
+    this.transactions = [tx, ...this.transactions];
+    this.persist();
+    return tx;
   }
 
   exportUnits(productId: string, serials: string[], customer: string) {
-    const invalidSerials = serials.filter(s => {
-      const unit = this.getUnitBySerial(s);
-      return !unit || unit.status === UnitStatus.SOLD || unit.productId !== productId;
-    });
-
-    if (invalidSerials.length > 0) {
-      throw new Error(`Serial không hợp lệ hoặc không có sẵn: ${invalidSerials.join(', ')}`);
-    }
-
-    this.units = this.units.map(u => {
-      if (serials.includes(u.serialNumber)) {
-        return {
-          ...u,
-          status: UnitStatus.SOLD,
-          exportDate: new Date().toISOString(),
-          customerName: customer,
-          warehouseLocation: 'OUT'
-        };
-      }
-      return u;
-    });
-
-    const transaction: Transaction = {
-      id: `tx-out-${Date.now()}`,
-      type: 'OUTBOUND',
-      date: new Date().toISOString(),
-      productId,
-      quantity: serials.length,
-      serialNumbers: serials,
-      customer: customer
-    };
-    this.transactions = [transaction, ...this.transactions];
-
-    this.saveData();
-    return transaction;
+    this.units = this.units.map(u => serials.includes(u.serialNumber) ? { ...u, status: UnitStatus.SOLD, exportDate: new Date().toISOString(), customerName: customer, warehouseLocation: 'OUT' } : u);
+    const tx: Transaction = { id: `tx-out-${Date.now()}`, type: 'OUTBOUND', date: new Date().toISOString(), productId, quantity: serials.length, serialNumbers: serials, customer };
+    this.transactions = [tx, ...this.transactions];
+    this.persist();
+    return tx;
   }
+
+  checkSerialImported(s: string) { return this.units.some(u => u.serialNumber === s); }
 }
 
 export const inventoryService = new InventoryService();

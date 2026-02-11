@@ -34,6 +34,7 @@ export interface SerialUnit {
   importDate: string;
   exportDate?: string;
   customerName?: string;
+  isReimported?: boolean; // Đánh dấu đã từng tái nhập
 }
 
 export interface Transaction {
@@ -45,6 +46,8 @@ export interface Transaction {
   serialNumbers: string[];
   toLocation?: string; // For transfers
   customer?: string;   // For outbound sales
+  isReimportTx?: boolean; // Đánh dấu giao dịch tái nhập
+  planName?: string;    // Tên lô / Kế hoạch sản xuất (Dùng cho Inbound)
 }
 
 export interface InventoryStats {

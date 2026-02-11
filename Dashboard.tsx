@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { inventoryService } from './inventoryService';
 import { StatCard } from './StatCard';
@@ -17,10 +18,8 @@ export const Dashboard: React.FC = () => {
     const products = inventoryService.getProducts();
     const units = inventoryService.getUnits();
     
-    // Calculate Stats
     const inStockUnits = units.filter(u => u.status === UnitStatus.NEW);
     
-    // Check out of stock
     let outOfStock = 0;
     const data = products.map(p => {
       const count = inStockUnits.filter(u => u.productId === p.id).length;
@@ -55,7 +54,6 @@ export const Dashboard: React.FC = () => {
           title="Tổng số máy tồn kho" 
           value={stats.totalStock} 
           icon={<Box />} 
-          trend="+12% so với tháng trước"
         />
         <StatCard 
           title="Model hết hàng" 
@@ -81,12 +79,6 @@ export const Dashboard: React.FC = () => {
                 <Bar dataKey="stock" name="Tồn hiện tại" fill="#0ea5e9" radius={[4, 4, 0, 0]} barSize={40} />
               </BarChart>
             </ResponsiveContainer>
-          </div>
-          <div className="flex justify-center gap-6 mt-4 text-sm">
-             <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-water-500 rounded-full"></div>
-                <span>Tồn hiện tại</span>
-             </div>
           </div>
         </div>
       </div>

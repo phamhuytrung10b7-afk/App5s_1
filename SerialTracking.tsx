@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { inventoryService } from './inventoryService';
 import { SerialUnit, Transaction } from './types';
-import { Search, MapPin, User, Calendar, Box, ArrowRightLeft, CheckCircle } from 'lucide-react';
+// Added History icon to lucide-react imports to resolve JSX element type conflict
+import { Search, MapPin, User, Calendar, Box, ArrowRightLeft, CheckCircle, Info, History } from 'lucide-react';
 
 export const SerialTracking: React.FC = () => {
   const [query, setQuery] = useState('');
@@ -11,27 +12,23 @@ export const SerialTracking: React.FC = () => {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    const unit = inventoryService.getUnitBySerial(query);
-    const txHistory = inventoryService.getSerialHistory(query);
+    const cleanQuery = query.trim();
+    if (!cleanQuery) return;
+
+    const unit = inventoryService.getUnitBySerial(cleanQuery);
+    const txHistory = inventoryService.getSerialHistory(cleanQuery);
     
     setResult(unit || null);
     setHistory(txHistory);
     setSearched(true);
   };
 
-  // Helper to get product details for rendering
   const productInfo = result ? inventoryService.getProductById(result.productId) : null;
 
   const formatDateTime = (isoString?: string) => {
     if (!isoString) return '';
     try {
-      return new Date(isoString).toLocaleString('vi-VN', {
-        year: 'numeric', 
-        month: '2-digit', 
-        day: '2-digit', 
-        hour: '2-digit', 
-        minute: '2-digit'
-      });
+      return new Date(isoString).toLocaleString('vi-VN');
     } catch {
       return isoString;
     }
@@ -47,16 +44,16 @@ export const SerialTracking: React.FC = () => {
        icon = <Calendar size={16} />;
        color = "bg-green-500";
        title = "Nhập Kho";
-       description = `Nhập mới vào vị trí: ${tx.toLocation || 'Kho Tổng'}`;
+       description = `Nhập kho tại: ${tx.toLocation || 'Kho Tổng'}`;
     } else if (tx.type === 'TRANSFER') {
        icon = <ArrowRightLeft size={16} />;
        color = "bg-blue-500";
-       title = "Luân Chuyển Kho";
+       title = "Điều chuyển";
        description = `Chuyển đến: ${tx.toLocation}`;
     } else if (tx.type === 'OUTBOUND') {
        icon = <User size={16} />;
        color = "bg-orange-500";
-       title = "Xuất Bán";
+       title = "Xuất bán";
        description = `Khách hàng: ${tx.customer}`;
     }
 
@@ -84,79 +81,81 @@ export const SerialTracking: React.FC = () => {
   return (
     <div className="max-w-3xl mx-auto space-y-8">
        <div className="text-center">
-          <h2 className="text-3xl font-bold text-slate-800">Tra cứu Serial</h2>
-          <p className="text-slate-500 mt-2">Truy xuất lịch sử vòng đời chi tiết của từng máy RO.</p>
+          <h2 className="text-3xl font-bold text-slate-800">Tra cứu IMEI / Serial</h2>
+          <p className="text-slate-500 mt-2">Truy xuất lịch sử chi tiết vòng đời sản phẩm.</p>
        </div>
 
        <form onSubmit={handleSearch} className="relative">
           <input 
             type="text"
-            className="w-full p-4 pl-12 rounded-full border-2 border-slate-200 focus:border-water-500 outline-none shadow-sm text-lg"
-            placeholder="Nhập số Serial (VD: SN-2023-001)"
+            className="w-full p-4 pl-12 rounded-full border-2 border-slate-200 focus:border-water-500 outline-none shadow-md text-lg font-mono"
+            placeholder="Nhập mã IMEI hoặc Serial..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
           <Search className="absolute left-4 top-5 text-slate-400" />
-          <button type="submit" className="absolute right-2 top-2 bg-water-600 text-white px-6 py-2 rounded-full font-medium hover:bg-water-700 transition-colors">
-            Tra cứu
+          <button type="submit" className="absolute right-2 top-2 bg-slate-800 text-white px-8 py-2.5 rounded-full font-bold hover:bg-slate-700 transition-all shadow-md active:scale-95">
+            Tìm kiếm
           </button>
        </form>
 
        {searched && !result && (
-         <div className="text-center p-8 bg-slate-50 rounded-xl border border-dashed border-slate-300">
-            <p className="text-slate-500">Không tìm thấy dữ liệu cho mã "<span className="font-mono font-bold text-slate-700">{query}</span>"</p>
+         <div className="text-center p-12 bg-white rounded-2xl border border-dashed border-slate-300 shadow-sm">
+            <div className="bg-slate-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+               <Info size={32} />
+            </div>
+            <h3 className="text-lg font-bold text-slate-700">Không tìm thấy mã này</h3>
+            <p className="text-slate-500 mt-1">Mã "<span className="font-mono font-bold text-slate-900">{query}</span>" chưa có dữ liệu nhập kho.</p>
          </div>
        )}
 
        {result && (
-         <div className="bg-white rounded-xl shadow-lg border border-slate-100 overflow-hidden animate-fade-in-up">
-            <div className="bg-slate-800 p-6 text-white flex justify-between items-center">
+         <div className="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden animate-fade-in-up">
+            <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
                <div>
-                 <p className="text-slate-300 text-sm">Số Serial</p>
-                 <h3 className="text-2xl font-mono font-bold">{result.serialNumber}</h3>
+                 <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Mã sản phẩm tra cứu</p>
+                 <h3 className="text-2xl font-mono font-bold text-water-400">{result.serialNumber}</h3>
                </div>
-               <div className={`px-3 py-1 rounded text-sm font-bold flex items-center gap-2 ${result.status === 'NEW' ? 'bg-green-500' : 'bg-orange-500'}`}>
-                 <CheckCircle size={14}/> {result.status}
+               <div className={`px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 border ${
+                 result.status === 'NEW' ? 'bg-green-500/10 border-green-500 text-green-400' : 'bg-orange-500/10 border-orange-500 text-orange-400'
+               }`}>
+                 <CheckCircle size={14}/> {result.status === 'NEW' ? 'ĐANG TỒN KHO' : 'ĐÃ XUẤT BÁN'}
                </div>
             </div>
             
             <div className="p-8">
-               <div className="flex items-center gap-4 mb-8 bg-blue-50 p-4 rounded-lg border border-blue-100">
-                  <div className="bg-blue-100 p-2 rounded-full text-blue-600">
-                     <MapPin size={24} />
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                  <div className="flex items-center gap-4 bg-blue-50 p-4 rounded-xl border border-blue-100 shadow-sm">
+                     <div className="bg-blue-100 p-3 rounded-lg text-blue-600"><MapPin size={24} /></div>
+                     <div>
+                        <p className="text-[10px] text-blue-500 font-bold uppercase tracking-wider">Vị trí hiện tại</p>
+                        <p className="text-lg font-bold text-slate-800">{result.warehouseLocation}</p>
+                     </div>
                   </div>
-                  <div>
-                     <p className="text-xs text-blue-500 font-bold uppercase tracking-wider">Vị trí hiện tại</p>
-                     <p className="text-xl font-bold text-slate-800">{result.warehouseLocation}</p>
+                  <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm">
+                     <div className="bg-slate-200 p-3 rounded-lg text-slate-600"><Box size={24} /></div>
+                     <div>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Thông tin Model</p>
+                        <p className="text-lg font-bold text-slate-800">{productInfo?.model || 'N/A'}</p>
+                        <p className="text-[10px] text-slate-400">{productInfo?.brand || 'N/A'}</p>
+                     </div>
                   </div>
                </div>
 
-               <h4 className="font-bold text-slate-700 mb-6 border-b border-slate-100 pb-2">Hành trình sản phẩm</h4>
+               <h4 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
+                  <History className="text-water-600" size={20}/>
+                  Lịch sử vòng đời sản phẩm
+               </h4>
                
-               <div className="pl-2">
+               <div className="pl-2 border-l-2 border-slate-50 ml-2">
                  {history.length > 0 ? (
                     history.map((tx, idx) => renderTimelineEvent(tx, idx))
                  ) : (
-                    <p className="text-slate-400 italic">Chưa có lịch sử giao dịch.</p>
+                    <div className="p-4 bg-slate-50 rounded-lg text-slate-400 italic text-sm text-center">
+                       Chưa có lịch sử giao dịch ghi nhận.
+                    </div>
                  )}
                </div>
-              
-               <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between text-sm">
-                 <div className="flex items-center gap-2">
-                    <Box size={18} className="text-slate-400"/>
-                    <span className="text-slate-500">Thông tin Sản phẩm</span>
-                 </div>
-                 <div className="text-right">
-                    {productInfo ? (
-                        <>
-                            <p className="font-bold text-slate-800 text-base">{productInfo.model}</p>
-                            <p className="text-xs text-slate-500">{productInfo.brand}</p>
-                        </>
-                    ) : (
-                        <span className="font-mono font-semibold text-slate-700">{result.productId}</span>
-                    )}
-                 </div>
-              </div>
             </div>
          </div>
        )}

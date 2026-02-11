@@ -24,7 +24,7 @@ class InventoryService {
         this.products = parsed.products || [];
         this.units = parsed.units || [];
         this.transactions = parsed.transactions || [];
-        this.warehouses = parsed.warehouses || [{ id: 'wh-default', name: 'Kho Tổng' }];
+        this.warehouses = parsed.warehouses || [{ id: 'wh-default', name: 'Kho Tổng', maxCapacity: 1000 }];
         this.customers = parsed.customers || [];
         this.productionPlans = parsed.productionPlans || [];
         this.salesOrders = parsed.salesOrders || [];
@@ -33,8 +33,7 @@ class InventoryService {
         console.error("Storage error:", e);
       }
     }
-    this.warehouses = [{ id: 'wh-default', name: 'Kho Tổng' }];
-    this.persist();
+    this.warehouses = [{ id: 'wh-default', name: 'Kho Tổng', maxCapacity: 1000 }];
   }
 
   private persist() {
@@ -45,7 +44,7 @@ class InventoryService {
       warehouses: this.warehouses,
       customers: this.customers,
       productionPlans: this.productionPlans,
-      salesOrders: this.salesOrders
+      salesOrders: this.salesOrders,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }
@@ -55,7 +54,6 @@ class InventoryService {
     window.location.reload();
   }
 
-  // GETTERS
   getProducts() { return this.products; }
   getUnits() { return this.units; }
   getTransactions() { return this.transactions; }
@@ -65,14 +63,23 @@ class InventoryService {
   getSalesOrders() { return this.salesOrders; }
   getProductById(id: string) { return this.products.find(p => p.id === id); }
   getUnitBySerial(serial: string) { return this.units.find(u => u.serialNumber === serial); }
-  getSerialHistory(serial: string) { return this.transactions.filter(t => t.serialNumbers.includes(serial)).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); }
+  
+  getWarehouseCurrentStock(whName: string) {
+    return this.units.filter(u => u.warehouseLocation === whName && u.status === UnitStatus.NEW).length;
+  }
+
+  getSerialHistory(serial: string) { 
+    return this.transactions.filter(t => t.serialNumbers.includes(serial))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); 
+  }
+
   getHistoryByDateRange(types: string[], start: string, end: string) {
       const s = start ? new Date(start).setHours(0,0,0,0) : 0;
       const e = end ? new Date(end).setHours(23,59,59,999) : 9999999999999;
-      return this.transactions.filter(t => types.includes(t.type) && new Date(t.date).getTime() >= s && new Date(t.date).getTime() <= e).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      return this.transactions.filter(t => types.includes(t.type) && new Date(t.date).getTime() >= s && new Date(t.date).getTime() <= e)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }
 
-  // ACTIONS
   addProduct(p: Product) { this.products = [...this.products, p]; this.persist(); }
   updateProduct(id: string, updates: Partial<Product>) { this.products = this.products.map(p => p.id === id ? { ...p, ...updates } : p); this.persist(); }
   deleteProduct(id: string) { this.products = this.products.filter(p => p.id !== id); this.persist(); }
@@ -100,34 +107,108 @@ class InventoryService {
     this.persist();
     return order;
   }
-  deleteSalesOrder(id: string) { this.salesOrders = this.salesOrders.filter(o => o.id !== id); this.persist(); }
 
-  importUnits(productId: string, serials: string[], location: string, planName?: string) {
-    const updatedUnits = [...this.units];
-    let isReimport = false;
-    serials.forEach(s => {
-      const idx = updatedUnits.findIndex(u => u.serialNumber === s);
-      if (idx !== -1) {
-        updatedUnits[idx] = { ...updatedUnits[idx], status: UnitStatus.NEW, warehouseLocation: location, importDate: new Date().toISOString(), isReimported: true };
-        isReimport = true;
-      } else {
-        updatedUnits.push({ serialNumber: s, productId, status: UnitStatus.NEW, warehouseLocation: location, importDate: new Date().toISOString(), isReimported: false });
+  deleteSalesOrder(id: string) {
+    this.salesOrders = this.salesOrders.filter(o => o.id !== id);
+    this.persist();
+  }
+
+  importUnits(productId: string, serials: string[], initialLocation: string, planName?: string) {
+    let remainingSerials = [...serials];
+    const allWhs = this.getWarehouses();
+    let whIdx = allWhs.findIndex(w => w.name === initialLocation);
+    if (whIdx === -1) whIdx = 0;
+
+    const finalAssignments: { location: string, serials: string[] }[] = [];
+
+    while (remainingSerials.length > 0 && whIdx < allWhs.length) {
+      const currentWh = allWhs[whIdx];
+      const currentStock = this.getWarehouseCurrentStock(currentWh.name);
+      const capacity = currentWh.maxCapacity || 999999;
+      const spaceLeft = Math.max(0, capacity - currentStock);
+
+      if (spaceLeft > 0) {
+        const canTake = remainingSerials.slice(0, spaceLeft);
+        finalAssignments.push({ location: currentWh.name, serials: canTake });
+        remainingSerials = remainingSerials.slice(spaceLeft);
       }
+      whIdx++;
+    }
+
+    if (remainingSerials.length > 0) {
+      const lastLoc = finalAssignments.length > 0 ? finalAssignments[finalAssignments.length - 1] : { location: initialLocation, serials: [] };
+      lastLoc.serials.push(...remainingSerials);
+      if (finalAssignments.length === 0) finalAssignments.push(lastLoc);
+    }
+
+    const updatedUnits = [...this.units];
+    finalAssignments.forEach(assign => {
+      let isReimportTx = false;
+      assign.serials.forEach(s => {
+        const idx = updatedUnits.findIndex(u => u.serialNumber === s);
+        if (idx !== -1) {
+          updatedUnits[idx] = { ...updatedUnits[idx], status: UnitStatus.NEW, warehouseLocation: assign.location, importDate: new Date().toISOString(), isReimported: true };
+          isReimportTx = true;
+        } else {
+          updatedUnits.push({ serialNumber: s, productId, status: UnitStatus.NEW, warehouseLocation: assign.location, importDate: new Date().toISOString(), isReimported: false });
+        }
+      });
+
+      this.transactions = [{ 
+        id: `tx-in-${Date.now()}-${assign.location}`, 
+        type: 'INBOUND', 
+        date: new Date().toISOString(), 
+        productId, 
+        quantity: assign.serials.length, 
+        serialNumbers: assign.serials, 
+        toLocation: assign.location, 
+        isReimportTx, 
+        planName 
+      }, ...this.transactions];
     });
+
     this.units = updatedUnits;
-    this.transactions = [{ id: `tx-in-${Date.now()}`, type: 'INBOUND', date: new Date().toISOString(), productId, quantity: serials.length, serialNumbers: serials, toLocation: location, isReimportTx: isReimport, planName }, ...this.transactions];
     this.persist();
   }
 
   transferUnits(productId: string, serials: string[], toLoc: string) {
+    // Get original locations for the record (simplified to the first unit's loc for transaction record)
+    const firstUnit = this.units.find(u => u.serialNumber === serials[0]);
+    const fromLoc = firstUnit?.warehouseLocation;
+
     this.units = this.units.map(u => serials.includes(u.serialNumber) ? { ...u, warehouseLocation: toLoc } : u);
-    this.transactions = [{ id: `tx-tr-${Date.now()}`, type: 'TRANSFER', date: new Date().toISOString(), productId, quantity: serials.length, serialNumbers: serials, toLocation: toLoc }, ...this.transactions];
+    this.transactions = [{ 
+      id: `tx-tr-${Date.now()}`, 
+      type: 'TRANSFER', 
+      date: new Date().toISOString(), 
+      productId, 
+      quantity: serials.length, 
+      serialNumbers: serials, 
+      fromLocation: fromLoc,
+      toLocation: toLoc 
+    }, ...this.transactions];
     this.persist();
   }
 
-  exportUnits(productId: string, serials: string[], customer: string) {
-    this.units = this.units.map(u => serials.includes(u.serialNumber) ? { ...u, status: UnitStatus.SOLD, exportDate: new Date().toISOString(), customerName: customer, warehouseLocation: 'OUT' } : u);
-    this.transactions = [{ id: `tx-out-${Date.now()}`, type: 'OUTBOUND', date: new Date().toISOString(), productId, quantity: serials.length, serialNumbers: serials, customer }, ...this.transactions];
+  exportUnits(productId: string, serials: string[], customer: string, fromLoc: string) {
+    this.units = this.units.map(u => serials.includes(u.serialNumber) ? { 
+      ...u, 
+      status: UnitStatus.SOLD, 
+      exportDate: new Date().toISOString(), 
+      customerName: customer, 
+      warehouseLocation: 'OUT' 
+    } : u);
+    
+    this.transactions = [{ 
+      id: `tx-out-${Date.now()}`, 
+      type: 'OUTBOUND', 
+      date: new Date().toISOString(), 
+      productId, 
+      quantity: serials.length, 
+      serialNumbers: serials, 
+      customer,
+      fromLocation: fromLoc 
+    }, ...this.transactions];
     this.persist();
   }
 

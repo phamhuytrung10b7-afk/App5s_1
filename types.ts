@@ -10,31 +10,32 @@ export interface Product {
   id: string;
   model: string;
   brand: string;
-  specs: string; // e.g., "9 Levels", "10 Levels"
+  specs: string; 
 }
 
 export interface Warehouse {
   id: string;
   name: string;
   address?: string;
+  maxCapacity?: number; // Sức chứa tối đa (số lượng máy)
 }
 
 export interface Customer {
   id: string;
   name: string;
   phone?: string;
-  type: 'DEALER' | 'RETAIL'; // Đại lý hoặc Khách lẻ
+  type: 'DEALER' | 'RETAIL'; 
 }
 
 export interface SerialUnit {
   serialNumber: string;
   productId: string;
   status: UnitStatus;
-  warehouseLocation: string; // Current location name
+  warehouseLocation: string; 
   importDate: string;
   exportDate?: string;
   customerName?: string;
-  isReimported?: boolean; // Đánh dấu đã từng tái nhập
+  isReimported?: boolean; 
 }
 
 export interface Transaction {
@@ -44,10 +45,11 @@ export interface Transaction {
   productId: string;
   quantity: number;
   serialNumbers: string[];
-  toLocation?: string; // For transfers
-  customer?: string;   // For outbound sales
-  isReimportTx?: boolean; // Đánh dấu giao dịch tái nhập
-  planName?: string;    // Tên lô / Kế hoạch sản xuất (Dùng cho Inbound)
+  fromLocation?: string; // Kho nguồn
+  toLocation?: string;   // Kho đích
+  customer?: string;   
+  isReimportTx?: boolean; 
+  planName?: string;    
 }
 
 export interface InventoryStats {
@@ -58,10 +60,10 @@ export interface InventoryStats {
 
 export interface ProductionPlan {
   id: string;
-  name: string; // Tên lô / Kế hoạch (VD: SX Tháng 10/2024)
-  productId: string; // Model áp dụng
+  name: string; 
+  productId: string; 
   createdDate: string;
-  serials: string[]; // Danh sách serial ban hành
+  serials: string[]; 
 }
 
 export interface SalesOrderItem {

@@ -65,24 +65,38 @@ export const exportTransactionHistory = (data: Transaction[], title: string) => 
         if (tx.type === 'INBOUND') {
             displayType = tx.isReimportTx ? 'Nhập kho (Tái nhập)' : 'Nhập kho (Mới)';
         } else if (tx.type === 'OUTBOUND') {
-            displayType = 'Xuất kho';
+            displayType = 'Xuất kho (Bán)';
         } else if (tx.type === 'TRANSFER') {
-            displayType = 'Điều chuyển';
+            displayType = 'Điều chuyển nội bộ';
         }
 
         return {
             'Thời gian': new Date(tx.date).toLocaleString('vi-VN'),
-            'Loại': displayType,
+            'Loại giao dịch': displayType,
             'Model': product?.model || tx.productId,
             'Tên Lô / Kế hoạch': tx.planName || '-',
             'Số lượng': tx.quantity,
-            'Đối tác/Vị trí': tx.type === 'OUTBOUND' ? tx.customer : (tx.toLocation || '-'),
-            'Danh sách Serial': tx.serialNumbers.join(', ')
+            'Kho nguồn (Xuất đi)': tx.fromLocation || '-',
+            'Đối tác/Kho nhận (Đích)': tx.type === 'OUTBOUND' ? tx.customer : (tx.toLocation || '-'),
+            'Danh sách mã IMEI': tx.serialNumbers.join(', ')
         };
     });
     const ws = utils.json_to_sheet(sheetData);
-    utils.book_append_sheet(wb, ws, "Dữ liệu");
-    writeFile(wb, `RO_${title.replace(/\s/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    
+    // Căn chỉnh độ rộng cột
+    ws['!cols'] = [
+      { wch: 20 }, // Thời gian
+      { wch: 20 }, // Loại
+      { wch: 20 }, // Model
+      { wch: 25 }, // Kế hoạch
+      { wch: 10 }, // Số lượng
+      { wch: 20 }, // Kho nguồn
+      { wch: 25 }, // Đối tác/Đích
+      { wch: 50 }  // Danh sách IMEI
+    ];
+
+    utils.book_append_sheet(wb, ws, "Lịch sử giao dịch");
+    writeFile(wb, `RO_Lich_su_${title.replace(/\s/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
 };
 
 export const exportPlanDetail = (plan: ProductionPlan) => {
@@ -132,12 +146,21 @@ export const exportFullDatabase = () => {
     
     const units = inventoryService.getUnits().map((u, index) => {
         const prod = inventoryService.getProductById(u.productId);
+        
+        // Tìm kho gốc (nếu đã xuất bán) từ lịch sử giao dịch
+        let originalLocation = u.warehouseLocation;
+        if (u.status === UnitStatus.SOLD) {
+            const history = inventoryService.getSerialHistory(u.serialNumber);
+            const exportTx = history.find(t => t.type === 'OUTBOUND');
+            if (exportTx) originalLocation = exportTx.fromLocation || 'N/A';
+        }
+
         return {
             'STT': index + 1,
             'Số Serial / IMEI': u.serialNumber, 
             'Model': prod?.model || u.productId, 
             'Trạng thái': u.status === UnitStatus.NEW ? 'Tồn kho' : 'Đã bán',
-            'Vị trí hiện tại': u.warehouseLocation, 
+            'Vị trí/Kho xuất': originalLocation, 
             'Ngày nhập kho': new Date(u.importDate).toLocaleString('vi-VN'),
             'Ngày xuất kho': u.exportDate ? new Date(u.exportDate).toLocaleString('vi-VN') : '-', 
             'Tên Khách hàng': u.customerName || '-',
@@ -148,7 +171,15 @@ export const exportFullDatabase = () => {
     const ws = utils.json_to_sheet(units.length > 0 ? units : [{ "Thông báo": "Hệ thống chưa có dữ liệu máy" }]);
     
     ws['!cols'] = [
-      { wch: 5 },  { wch: 25 }, { wch: 20 }, { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 25 }, { wch: 15 }
+      { wch: 5 },  // STT
+      { wch: 25 }, // Serial
+      { wch: 20 }, // Model
+      { wch: 15 }, // Status
+      { wch: 20 }, // Vị trí
+      { wch: 20 }, // Nhập
+      { wch: 20 }, // Xuất
+      { wch: 25 }, // Khách
+      { wch: 15 }  // Tái nhập
     ];
 
     utils.book_append_sheet(wb, ws, "Dữ liệu chi tiết");

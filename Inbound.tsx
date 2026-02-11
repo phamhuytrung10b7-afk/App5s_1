@@ -1,8 +1,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { inventoryService } from './inventoryService';
-import { exportTransactionHistory, exportDraftScannedList } from './reportService';
-import { Scan, Plus, Trash2, CheckCircle, Warehouse, AlertTriangle, XCircle, ArrowRight, History, ChevronDown, ChevronUp, Calendar, Box, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { exportTransactionHistory } from './reportService';
+import { Scan, Plus, Trash2, CheckCircle, Warehouse, AlertTriangle, XCircle, ArrowRight, History, ChevronDown, ChevronUp, Calendar, Box, FileSpreadsheet, RefreshCw, Info, Zap } from 'lucide-react';
 import { playSound } from './sound';
 import { ProductionPlan, UnitStatus, Transaction } from './types';
 
@@ -23,7 +23,7 @@ export const Inbound: React.FC = () => {
   const selectedProduct = selectedPlan ? inventoryService.getProductById(selectedPlan.productId) : null;
   
   const [currentSerial, setCurrentSerial] = useState('');
-  const [serialList, setSerialList] = useState<string[]>([]);
+  const [recentScans, setRecentScans] = useState<{serial: string, time: string, wh: string}[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<{type: 'success' | 'error' | 'warning', text: string} | null>(null);
 
@@ -36,191 +36,263 @@ export const Inbound: React.FC = () => {
 
   useEffect(() => {
     if (activeTab === 'SCAN') inputRef.current?.focus();
-  }, [serialList, message, selectedPlanId, activeTab]);
+  }, [recentScans, message, selectedPlanId, activeTab, location]);
 
-  const getPlanProgress = (plan: ProductionPlan) => {
-      const total = plan.serials.length;
-      const imported = plan.serials.filter(s => inventoryService.checkSerialImported(s)).length;
-      const sessionCount = serialList.filter(s => plan.serials.includes(s)).length;
-      return { total, imported, sessionCount, current: imported + sessionCount };
-  };
-  
-  const handleAddSerial = (e?: React.FormEvent) => {
+  const handleAutoImport = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!selectedPlan) { playSound('error'); setMessage({ type: 'error', text: 'Vui lòng chọn Kế hoạch sản xuất!' }); return; }
     const scannedCode = currentSerial.trim();
     if (!scannedCode) return;
-    if (serialList.includes(scannedCode)) { playSound('warning'); setMessage({ type: 'warning', text: `Mã ${scannedCode} đã vừa quét xong!` }); setCurrentSerial(''); return; }
-    
-    if (!selectedPlan.serials.includes(scannedCode)) { playSound('error'); setMessage({ type: 'error', text: `Mã ${scannedCode} KHÔNG thuộc kế hoạch!` }); setCurrentSerial(''); return; }
-    
+
+    if (!selectedPlan || !selectedProduct) { 
+      playSound('error'); 
+      setMessage({ type: 'error', text: 'Vui lòng chọn Kế hoạch sản xuất trước!' }); 
+      return; 
+    }
+
+    if (!selectedPlan.serials.includes(scannedCode)) { 
+      playSound('error'); 
+      setMessage({ type: 'error', text: `Mã ${scannedCode} KHÔNG thuộc kế hoạch này!` }); 
+      setCurrentSerial('');
+      return; 
+    }
+
     const unit = inventoryService.getUnitBySerial(scannedCode);
-    if (unit) {
-      if (unit.status === UnitStatus.NEW) {
+    if (unit && unit.status === UnitStatus.NEW) {
+      playSound('error');
+      setMessage({ type: 'error', text: `Lỗi: Mã ${scannedCode} đã có sẵn trong kho ${unit.warehouseLocation}!` });
+      setCurrentSerial('');
+      return;
+    }
+
+    // --- LOGIC TỰ ĐỘNG CHUYỂN KHO KHI ĐẦY ---
+    let targetWhName = location;
+    const currentWh = warehouses.find(w => w.name === targetWhName);
+    const currentStock = inventoryService.getWarehouseCurrentStock(targetWhName);
+    const capacity = currentWh?.maxCapacity || 9999;
+
+    if (currentStock >= capacity) {
+      // Tìm kho tiếp theo còn chỗ
+      const nextAvailableWh = warehouses.find(w => inventoryService.getWarehouseCurrentStock(w.name) < (w.maxCapacity || 9999));
+      if (nextAvailableWh) {
+        targetWhName = nextAvailableWh.name;
+        setLocation(targetWhName); // Tự động nhảy UI sang kho mới
+        setMessage({ type: 'warning', text: `Kho cũ đã đầy! Tự động chuyển sang ${targetWhName}` });
+      } else {
         playSound('error');
-        setMessage({ type: 'error', text: `Lỗi: Mã ${scannedCode} đang có sẵn trong kho!` });
+        setMessage({ type: 'error', text: 'Tất cả các kho đã đầy! Vui lòng nâng cấp sức chứa.' });
         setCurrentSerial('');
         return;
       }
-      // Lưu ý: isReimported là trạng thái vĩnh viễn của máy nếu đã từng tái nhập
-      playSound('success');
-      setMessage({ type: 'warning', text: `Phát hiện TÁI NHẬP: Mã ${scannedCode} (Máy đã từng xuất bán)` });
-    } else {
-      playSound('success');
-      setMessage({ type: 'success', text: `Hợp lệ: ${scannedCode}` });
     }
 
-    setSerialList([...serialList, scannedCode]);
+    // Thực hiện nhập ngay lập tức
+    try {
+      inventoryService.importUnits(selectedProduct.id, [scannedCode], targetWhName, selectedPlan.name);
+      playSound('success');
+      
+      const newScan = { 
+        serial: scannedCode, 
+        time: new Date().toLocaleTimeString('vi-VN'), 
+        wh: targetWhName 
+      };
+      setRecentScans([newScan, ...recentScans.slice(0, 19)]); // Giữ 20 lần quét gần nhất
+      
+      if (!message || message.type !== 'warning') {
+        setMessage({ type: 'success', text: `Đã nhập thành công: ${scannedCode} vào ${targetWhName}` });
+      }
+    } catch (err: any) {
+      playSound('error');
+      setMessage({ type: 'error', text: err.message });
+    }
+
     setCurrentSerial('');
   };
 
-  const handleSubmit = () => {
-    try {
-      if (!selectedProduct || !location || serialList.length === 0 || !selectedPlan) throw new Error("Thông tin không đầy đủ");
-      inventoryService.importUnits(selectedProduct.id, serialList, location, selectedPlan.name);
-      playSound('success');
-      setMessage({ type: 'success', text: `Đã nhập kho ${serialList.length} máy thành công theo Lô: ${selectedPlan.name}.` });
-      setSerialList([]);
-    } catch (err: any) { 
-      playSound('error'); 
-      setMessage({ type: 'error', text: err.message }); 
-    }
+  const getPlanProgress = (plan: ProductionPlan) => {
+    const total = plan.serials.length;
+    const imported = plan.serials.filter(s => inventoryService.checkSerialImported(s)).length;
+    return { total, imported };
   };
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-100">
          <div className="flex items-center gap-3">
-             <div className="bg-green-100 p-3 rounded-full text-green-600"><Scan /></div>
-             <div><h2 className="text-xl font-bold">Quản lý Nhập Kho</h2><p className="text-slate-500 text-sm">Xử lý nhập máy RO từ sản xuất hoặc Tái nhập.</p></div>
+             <div className="bg-green-600 p-3 rounded-full text-white shadow-lg shadow-green-100"><Zap /></div>
+             <div><h2 className="text-xl font-bold">Nhập Kho Tức Thì</h2><p className="text-slate-500 text-sm">Chế độ rảnh tay: Quét là vào, đầy tự nhảy kho.</p></div>
          </div>
          <div className="flex bg-slate-100 p-1 rounded-lg">
-             <button onClick={() => setActiveTab('SCAN')} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'SCAN' ? 'bg-white shadow text-green-700' : 'text-slate-500'}`}>Nhập Mới</button>
+             <button onClick={() => setActiveTab('SCAN')} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'SCAN' ? 'bg-white shadow text-green-700' : 'text-slate-500'}`}>Quét Nhập</button>
              <button onClick={() => setActiveTab('HISTORY')} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'HISTORY' ? 'bg-white shadow text-green-700' : 'text-slate-500'}`}>Lịch sử</button>
          </div>
       </div>
 
       {activeTab === 'SCAN' && (
-         <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-100">
+         <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-100 animate-fade-in">
             {plans.length === 0 ? <div className="text-center p-8 text-slate-500 italic">Chưa có kế hoạch sản xuất.</div> : (
                <>
-                  {message && (
-                     <div className={`p-4 mb-6 rounded-lg flex items-center gap-2 ${message.type === 'success' ? 'bg-green-50 text-green-700' : message.type === 'warning' ? 'bg-orange-50 text-orange-700 border border-orange-200' : 'bg-red-50 text-red-700'}`}>
-                        {message.type === 'success' ? <CheckCircle size={20} /> : message.type === 'warning' ? <AlertTriangle size={20}/> : <XCircle size={20} />}
-                        <span className="font-medium">{message.text}</span>
-                     </div>
-                  )}
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 bg-slate-50 p-6 rounded-xl border border-slate-200">
-                     <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Chọn Kế hoạch / Lô SX</label>
-                        <select className="w-full p-3 border rounded-lg bg-white" value={selectedPlanId} onChange={(e) => { setSelectedPlanId(e.target.value); setSerialList([]); setMessage(null); }}>
-                           <option value="">-- Chọn Kế hoạch --</option>
-                           {plans.map(p => { const prog = getPlanProgress(p); return <option key={p.id} value={p.id}>{p.name} ({prog.imported}/{prog.total})</option>; })}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                    {/* Chọn Kế hoạch */}
+                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Lô sản xuất đang xử lý</label>
+                        <select className="w-full p-3 border rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-400 font-bold text-slate-800" value={selectedPlanId} onChange={(e) => { setSelectedPlanId(e.target.value); setMessage(null); }}>
+                           <option value="">-- Click để chọn Kế hoạch --</option>
+                           {plans.map(p => { const prog = getPlanProgress(p); return <option key={p.id} value={p.id}>{p.name} ({prog.imported}/{p.serials.length})</option>; })}
                         </select>
-                     </div>
-                     <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Chọn Kho Nhập</label>
-                        <select className="w-full p-3 border rounded-lg bg-white" value={location} onChange={(e) => setLocation(e.target.value)}>
-                           {warehouses.map(wh => <option key={wh.id} value={wh.name}>{wh.name}</option>)}
-                        </select>
-                     </div>
-                  </div>
-
-                  {selectedPlan && (
-                     <div className="border-t pt-6">
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Quét mã Serial/QR</label>
-                        <form onSubmit={handleAddSerial} className="flex gap-2 mb-4">
-                           <input ref={inputRef} type="text" placeholder="Quét mã vạch..." className="flex-1 p-4 border rounded-lg font-mono text-lg shadow-sm" value={currentSerial} onChange={(e) => setCurrentSerial(e.target.value)} autoFocus />
-                           <button type="submit" className="px-8 py-3 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-700">+ Thêm</button>
-                        </form>
-                        {serialList.length > 0 && (
-                           <div className="bg-white rounded-lg p-4 border shadow-sm mt-6">
-                              <div className="flex justify-between items-center mb-4">
-                                <h4 className="font-bold flex items-center gap-2 text-green-700"><CheckCircle size={18}/> Đang chờ nhập ({serialList.length})</h4>
-                                <button onClick={() => exportDraftScannedList(serialList, 'Nhap_Moi')} className="text-green-600 hover:text-green-700 font-bold flex items-center gap-1 text-xs"><FileSpreadsheet size={14} /> Xuất nháp</button>
-                              </div>
-                              <div className="space-y-2 max-h-60 overflow-y-auto bg-slate-50 p-2 rounded-lg">
-                                 {serialList.map((sn, idx) => (
-                                    <div key={idx} className="flex justify-between items-center bg-white p-3 rounded border">
-                                       <span className="font-mono font-bold">{sn}</span>
-                                       <button onClick={() => setSerialList(serialList.filter(s => s !== sn))} className="text-slate-400 hover:text-red-500"><Trash2 size={18} /></button>
-                                    </div>
-                                 ))}
-                              </div>
-                              <div className="mt-6 flex justify-end"><button onClick={handleSubmit} className="bg-water-600 text-white py-3 px-8 rounded-lg font-bold hover:bg-water-700 flex items-center gap-2">Xác nhận Nhập Kho <ArrowRight size={20}/></button></div>
+                        {selectedPlan && (
+                           <div className="mt-4 flex items-center justify-between text-xs font-bold text-slate-500 px-1">
+                              <span>Tiến độ:</span>
+                              <span className="text-green-600">{getPlanProgress(selectedPlan).imported} / {selectedPlan.serials.length} máy</span>
                            </div>
                         )}
+                    </div>
+
+                    {/* Input Quét chính */}
+                    <div className={`flex flex-col justify-center ${!selectedPlanId ? 'opacity-30 pointer-events-none' : ''}`}>
+                        <label className="block text-[10px] font-black text-water-600 uppercase tracking-widest mb-3 flex items-center gap-1">
+                          <Zap size={12}/> Quét IMEI tại đây (Xử lý tức thì)
+                        </label>
+                        <form onSubmit={handleAutoImport}>
+                           <input 
+                              ref={inputRef} 
+                              type="text" 
+                              placeholder="Quét mã vạch..." 
+                              className="w-full p-4 border-2 border-water-100 rounded-2xl font-mono text-2xl shadow-sm outline-none focus:border-water-500 transition-all bg-water-50/30" 
+                              value={currentSerial} 
+                              onChange={(e) => setCurrentSerial(e.target.value)} 
+                              autoFocus 
+                           />
+                        </form>
+                    </div>
+                  </div>
+
+                  {message && (
+                     <div className={`p-4 mb-6 rounded-xl flex items-center gap-3 animate-slide-in ${message.type === 'success' ? 'bg-green-600 text-white' : message.type === 'warning' ? 'bg-orange-500 text-white' : 'bg-red-600 text-white'}`}>
+                        {message.type === 'success' ? <CheckCircle size={24} /> : message.type === 'warning' ? <AlertTriangle size={24}/> : <XCircle size={24} />}
+                        <span className="font-black tracking-tight">{message.text}</span>
                      </div>
                   )}
+
+                  {/* Lưới chọn kho hiển thị trạng thái */}
+                  <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-inner mb-8">
+                        <label className="block text-xs font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Trạng thái lấp đầy các kho</label>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                           {warehouses.map(wh => {
+                              const stock = inventoryService.getWarehouseCurrentStock(wh.name);
+                              const capacity = wh.maxCapacity || 9999;
+                              const isFull = stock >= capacity;
+                              const isSelected = location === wh.name;
+
+                              return (
+                                <div 
+                                  key={wh.id}
+                                  className={`
+                                    relative p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2
+                                    ${isSelected ? 'border-green-500 bg-white shadow-lg scale-105 z-10' : 'border-slate-200 bg-slate-50 opacity-60'}
+                                  `}
+                                >
+                                  <div className={`
+                                    w-10 h-10 rounded-xl flex items-center justify-center
+                                    ${isFull ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}
+                                    ${isSelected ? 'bg-green-600 text-white' : ''}
+                                  `}>
+                                    <Warehouse size={20} />
+                                  </div>
+                                  <div className="text-center">
+                                    <p className="text-[10px] font-black text-slate-800 uppercase truncate w-24">{wh.name}</p>
+                                    <p className={`text-[10px] font-bold ${isFull ? 'text-red-500' : 'text-slate-400'}`}>
+                                      {stock} / {capacity}
+                                    </p>
+                                  </div>
+                                  {isSelected && (
+                                    <div className="absolute -top-2 bg-green-600 text-white text-[8px] px-2 py-0.5 rounded-full font-black shadow-sm">
+                                      HÀNG ĐANG VÀO
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                           })}
+                        </div>
+                  </div>
+
+                  {/* Nhật ký quét gần đây */}
+                  <div className="border-t pt-6">
+                      <div className="flex justify-between items-center mb-4">
+                        <h4 className="font-black text-slate-400 text-xs uppercase tracking-widest flex items-center gap-2">
+                           <History size={14}/> Nhật ký quét gần đây (Tự động lưu)
+                        </h4>
+                      </div>
+                      <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
+                         {recentScans.map((s, idx) => (
+                           <div key={idx} className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100 shadow-sm animate-slide-in">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-green-50 text-green-600 flex items-center justify-center text-[10px] font-bold border border-green-100">
+                                  {recentScans.length - idx}
+                                </div>
+                                <span className="font-mono font-black text-slate-700">{s.serial}</span>
+                              </div>
+                              <div className="flex items-center gap-4">
+                                <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-[10px] font-black">KHO: {s.wh}</span>
+                                <span className="text-[10px] text-slate-400 font-bold">{s.time}</span>
+                              </div>
+                           </div>
+                         ))}
+                         {recentScans.length === 0 && (
+                           <div className="text-center py-12 text-slate-300 italic text-sm border-2 border-dashed rounded-2xl">
+                             Hệ thống sẵn sàng. Vui lòng quét mã để nhập kho...
+                           </div>
+                         )}
+                      </div>
+                  </div>
                </>
             )}
          </div>
       )}
 
       {activeTab === 'HISTORY' && (
-         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 space-y-6">
-             <div className="flex justify-between items-end border-b pb-6">
-                <div className="flex gap-4">
-                   <input type="date" className="p-2 border rounded-lg" value={historyFrom} onChange={e => setHistoryFrom(e.target.value)} />
-                   <input type="date" className="p-2 border rounded-lg" value={historyTo} onChange={e => setHistoryTo(e.target.value)} />
+         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 space-y-6 animate-fade-in">
+             <div className="flex flex-col md:flex-row justify-between items-end gap-4 border-b pb-6">
+                <div className="flex gap-4 w-full md:w-auto">
+                   <div className="flex-1">
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Từ ngày</label>
+                      <input type="date" className="w-full p-2 border rounded-lg outline-none bg-slate-50" value={historyFrom} onChange={e => setHistoryFrom(e.target.value)} />
+                   </div>
+                   <div className="flex-1">
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Đến ngày</label>
+                      <input type="date" className="w-full p-2 border rounded-lg outline-none bg-slate-50" value={historyTo} onChange={e => setHistoryTo(e.target.value)} />
+                   </div>
                 </div>
-                <button onClick={() => exportTransactionHistory(historyData, 'Lich_su_Nhap')} className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 text-sm"><FileSpreadsheet size={16}/> Xuất Excel</button>
+                <button onClick={() => exportTransactionHistory(historyData, 'Lich_su_Nhap')} className="w-full md:w-auto bg-green-600 text-white px-6 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 text-sm hover:bg-green-700 shadow-lg shadow-green-100">
+                  <FileSpreadsheet size={18}/> Xuất Báo cáo Excel
+                </button>
              </div>
              <div className="space-y-4">
                 {historyData.map(tx => (
-                  <div key={tx.id} className={`border rounded-lg overflow-hidden transition-colors ${tx.isReimportTx ? 'border-orange-200 hover:border-orange-400' : 'border-slate-200 hover:border-green-200'}`}>
+                  <div key={tx.id} className="border border-slate-100 rounded-2xl overflow-hidden hover:border-green-300 transition-all">
                      <div className="bg-slate-50 p-4 flex justify-between items-center cursor-pointer" onClick={() => setExpandedTx(expandedTx === tx.id ? null : tx.id)}>
                         <div className="flex items-center gap-4">
-                          <div className={`p-2 rounded-full ${tx.isReimportTx ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
-                            {tx.isReimportTx ? <RefreshCw size={18} /> : <Calendar size={18} />}
-                          </div>
+                          <div className="p-3 rounded-xl bg-green-100 text-green-600"><Calendar size={20} /></div>
                           <div>
-                            <div className="font-bold">{new Date(tx.date).toLocaleString('vi-VN')}</div>
-                            <div className="text-sm text-slate-500 flex items-center gap-2 flex-wrap">
-                              {inventoryService.getProductById(tx.productId)?.model} • {tx.toLocation}
-                              {tx.planName && (
-                                <span className="bg-water-50 text-water-700 px-2 py-0.5 rounded text-[10px] font-bold">LÔ: {tx.planName}</span>
-                              )}
-                              {tx.isReimportTx && (
-                                <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1">
-                                  <RefreshCw size={10}/> TÁI NHẬP
-                                </span>
-                              )}
+                            <div className="font-black text-slate-800">{new Date(tx.date).toLocaleString('vi-VN')}</div>
+                            <div className="text-xs text-slate-500 font-bold mt-1 uppercase tracking-tighter">
+                              {inventoryService.getProductById(tx.productId)?.model} <span className="text-slate-300 mx-1">|</span> Kho: {tx.toLocation}
                             </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
-                          <div className={`text-right font-bold text-lg ${tx.isReimportTx ? 'text-orange-600' : 'text-green-600'}`}>
-                            +{tx.quantity}
-                          </div>
-                          <button className="text-slate-400">
-                            {expandedTx === tx.id ? <ChevronUp /> : <ChevronDown />}
-                          </button>
+                          <div className="text-right font-black text-xl text-green-600">+{tx.quantity}</div>
+                          {expandedTx === tx.id ? <ChevronUp /> : <ChevronDown />}
                         </div>
                      </div>
                      {expandedTx === tx.id && (
-                       <div className="p-4 bg-white border-t">
-                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                           {tx.serialNumbers.map(sn => {
-                             const unit = inventoryService.getUnitBySerial(sn);
-                             return (
-                               <div key={sn} className={`relative font-mono text-xs p-2 rounded text-center border ${unit?.isReimported ? 'bg-orange-50 border-orange-200 text-orange-800' : 'bg-slate-50 border-slate-100'}`}>
-                                 {sn}
-                                 {unit?.isReimported && (
-                                   <div className="absolute -top-1.5 -right-1.5 bg-orange-500 text-white rounded-full p-0.5 shadow-sm" title="Máy tái nhập">
-                                      <RefreshCw size={8}/>
-                                   </div>
-                                 )}
-                               </div>
-                             );
-                           })}
-                         </div>
+                       <div className="p-6 bg-white border-t border-slate-50 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                         {tx.serialNumbers.map(sn => (
+                           <div key={sn} className="font-mono text-[10px] p-2 bg-slate-50 rounded-lg text-center border font-bold text-slate-600">{sn}</div>
+                         ))}
                        </div>
                      )}
                   </div>
                 ))}
-                {historyData.length === 0 && <div className="text-center py-12 text-slate-400 italic">Không tìm thấy dữ liệu nhập kho trong khoảng thời gian này.</div>}
              </div>
          </div>
       )}

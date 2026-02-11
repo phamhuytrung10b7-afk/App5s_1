@@ -1,6 +1,7 @@
+
 import React from 'react';
 import { inventoryService } from './inventoryService';
-import { exportExcelReport } from './services/reportService';
+import { exportExcelReport } from './reportService';
 import { UnitStatus } from './types';
 import { FileSpreadsheet } from 'lucide-react';
 

@@ -1,9 +1,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { inventoryService } from './inventoryService';
-import { exportTransactionHistory, exportDraftScannedList } from './services/reportService';
-import { Scan, Plus, Trash2, CheckCircle, Warehouse, AlertTriangle, XCircle, ClipboardCheck, ArrowRight, History, ChevronDown, ChevronUp, Calendar, Search, FileSpreadsheet, Box } from 'lucide-react';
-import { playSound } from './utils/sound';
+import { exportTransactionHistory, exportDraftScannedList } from './reportService';
+import { Scan, Plus, Trash2, CheckCircle, Warehouse, AlertTriangle, XCircle, ArrowRight, History, ChevronDown, ChevronUp, Calendar, Box, FileSpreadsheet } from 'lucide-react';
+import { playSound } from './sound';
 import { ProductionPlan, UnitStatus, Transaction } from './types';
 
 export const Inbound: React.FC = () => {
@@ -45,8 +45,6 @@ export const Inbound: React.FC = () => {
       return { total, imported, sessionCount, current: imported + sessionCount };
   };
   
-  const progress = selectedPlan ? getPlanProgress(selectedPlan) : { total: 0, imported: 0, sessionCount: 0, current: 0 };
-
   const handleAddSerial = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!selectedPlan) { playSound('error'); setMessage({ type: 'error', text: 'Vui lòng chọn Kế hoạch sản xuất!' }); return; }
@@ -54,7 +52,6 @@ export const Inbound: React.FC = () => {
     if (!scannedCode) return;
     if (serialList.includes(scannedCode)) { playSound('warning'); setMessage({ type: 'warning', text: `Mã ${scannedCode} đã vừa quét xong!` }); setCurrentSerial(''); return; }
     
-    // Kiểm tra xem mã có thuộc kế hoạch không
     if (!selectedPlan.serials.includes(scannedCode)) { playSound('error'); setMessage({ type: 'error', text: `Mã ${scannedCode} KHÔNG thuộc kế hoạch!` }); setCurrentSerial(''); return; }
     
     const unit = inventoryService.getUnitBySerial(scannedCode);
@@ -67,11 +64,10 @@ export const Inbound: React.FC = () => {
       }
       if (unit.isReimported) {
         playSound('error');
-        setMessage({ type: 'error', text: `Lỗi: Mã ${scannedCode} đã từng tái nhập trước đó. Không thể nhập lại lần 2.` });
+        setMessage({ type: 'error', text: `Lỗi: Mã ${scannedCode} đã từng tái nhập.` });
         setCurrentSerial('');
         return;
       }
-      // Nếu máy đã SOLD và chưa từng tái nhập -> Cho phép
       playSound('success');
       setMessage({ type: 'warning', text: `Phát hiện TÁI NHẬP: Mã ${scannedCode} (Đã bán trước đó)` });
     } else {
@@ -98,7 +94,7 @@ export const Inbound: React.FC = () => {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border">
+      <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-100">
          <div className="flex items-center gap-3">
              <div className="bg-green-100 p-3 rounded-full text-green-600"><Scan /></div>
              <div><h2 className="text-xl font-bold">Quản lý Nhập Kho</h2><p className="text-slate-500 text-sm">Xử lý nhập máy RO từ sản xuất hoặc Tái nhập.</p></div>
@@ -110,7 +106,7 @@ export const Inbound: React.FC = () => {
       </div>
 
       {activeTab === 'SCAN' && (
-         <div className="bg-white p-8 rounded-xl shadow-sm border">
+         <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-100">
             {plans.length === 0 ? <div className="text-center p-8 text-slate-500 italic">Chưa có kế hoạch sản xuất.</div> : (
                <>
                   {message && (
@@ -120,7 +116,7 @@ export const Inbound: React.FC = () => {
                      </div>
                   )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 bg-slate-50 p-6 rounded-xl border">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 bg-slate-50 p-6 rounded-xl border border-slate-200">
                      <div>
                         <label className="block text-sm font-bold text-slate-700 mb-2">Chọn Kế hoạch / Lô SX</label>
                         <select className="w-full p-3 border rounded-lg bg-white" value={selectedPlanId} onChange={(e) => { setSelectedPlanId(e.target.value); setSerialList([]); setMessage(null); }}>
@@ -168,7 +164,7 @@ export const Inbound: React.FC = () => {
       )}
 
       {activeTab === 'HISTORY' && (
-         <div className="bg-white p-6 rounded-xl shadow-sm border space-y-6">
+         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 space-y-6">
              <div className="flex justify-between items-end border-b pb-6">
                 <div className="flex gap-4">
                    <input type="date" className="p-2 border rounded-lg" value={historyFrom} onChange={e => setHistoryFrom(e.target.value)} />
@@ -178,7 +174,7 @@ export const Inbound: React.FC = () => {
              </div>
              <div className="space-y-4">
                 {historyData.map(tx => (
-                  <div key={tx.id} className="border rounded-lg overflow-hidden hover:border-green-200 transition-colors">
+                  <div key={tx.id} className="border border-slate-200 rounded-lg overflow-hidden hover:border-green-200 transition-colors">
                      <div className="bg-slate-50 p-4 flex justify-between items-center cursor-pointer" onClick={() => setExpandedTx(expandedTx === tx.id ? null : tx.id)}>
                         <div className="flex items-center gap-4">
                           <div className={`p-2 rounded-full ${tx.isReimportTx ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
@@ -189,11 +185,8 @@ export const Inbound: React.FC = () => {
                             <div className="text-sm text-slate-500 flex items-center gap-2">
                               {inventoryService.getProductById(tx.productId)?.model} • {tx.toLocation}
                               {tx.planName && (
-                                <span className="bg-water-50 text-water-700 px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1">
-                                  <Box size={10}/> LÔ: {tx.planName}
-                                </span>
+                                <span className="bg-water-50 text-water-700 px-2 py-0.5 rounded text-[10px] font-bold">LÔ: {tx.planName}</span>
                               )}
-                              {tx.isReimportTx && <span className="text-orange-600 font-bold ml-1">(Tái nhập)</span>}
                             </div>
                           </div>
                         </div>
@@ -202,7 +195,6 @@ export const Inbound: React.FC = () => {
                      {expandedTx === tx.id && <div className="p-4 bg-white border-t grid grid-cols-2 md:grid-cols-4 gap-2">{tx.serialNumbers.map(sn => <div key={sn} className="font-mono text-xs bg-slate-50 p-2 rounded text-center">{sn}</div>)}</div>}
                   </div>
                 ))}
-                {historyData.length === 0 && <div className="text-center py-12 text-slate-400 border border-dashed rounded-lg">Không tìm thấy lịch sử nhập trong khoảng thời gian này.</div>}
              </div>
          </div>
       )}

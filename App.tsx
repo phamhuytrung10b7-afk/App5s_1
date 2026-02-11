@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Layout } from './Layout';
 import { Dashboard } from './Dashboard';
@@ -7,11 +8,11 @@ import { Inventory } from './Inventory';
 import { SerialTracking } from './SerialTracking';
 import { Settings } from './Settings';
 import { ProductionCheck } from './ProductionCheck';
+import { SalesOrders } from './SalesOrders';
 
 const App: React.FC = () => {
   const [currentPath, setCurrentPath] = useState('/');
 
-  // Simple Hash Router simulation
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.slice(1) || '/';
@@ -19,7 +20,6 @@ const App: React.FC = () => {
     };
 
     window.addEventListener('hashchange', handleHashChange);
-    // Set initial hash if empty
     if (!window.location.hash) window.location.hash = '/';
     else handleHashChange();
 
@@ -37,6 +37,7 @@ const App: React.FC = () => {
     case '/inventory': Content = Inventory; break;
     case '/tracking': Content = SerialTracking; break;
     case '/production-check': Content = ProductionCheck; break;
+    case '/sales-orders': Content = SalesOrders; break;
     case '/settings': Content = Settings; break;
     default: Content = Dashboard;
   }

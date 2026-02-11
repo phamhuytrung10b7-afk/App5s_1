@@ -1,36 +1,79 @@
-export interface Prize {
+
+export enum UnitStatus {
+  NEW = 'NEW',
+  SOLD = 'SOLD',
+  WARRANTY = 'WARRANTY',
+  EXHIBITION = 'EXHIBITION'
+}
+
+export interface Product {
+  id: string;
+  model: string;
+  brand: string;
+  specs: string; // e.g., "9 Levels", "10 Levels"
+}
+
+export interface Warehouse {
   id: string;
   name: string;
-  image: string;
-  value: string;
+  address?: string;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone?: string;
+  type: 'DEALER' | 'RETAIL'; // Đại lý hoặc Khách lẻ
+}
+
+export interface SerialUnit {
+  serialNumber: string;
+  productId: string;
+  status: UnitStatus;
+  warehouseLocation: string; // Current location name
+  importDate: string;
+  exportDate?: string;
+  customerName?: string;
+}
+
+export interface Transaction {
+  id: string;
+  type: 'INBOUND' | 'OUTBOUND' | 'TRANSFER';
+  date: string;
+  productId: string;
   quantity: number;
-  winners: number[]; // Array of winning numbers
+  serialNumbers: string[];
+  toLocation?: string; // For transfers
+  customer?: string;   // For outbound sales
 }
 
-export enum GameState {
-  IDLE = 'IDLE',
-  SPINNING = 'SPINNING',
-  STOPPING = 'STOPPING',
-  CELEBRATING = 'CELEBRATING'
+export interface InventoryStats {
+  totalUnits: number;
+  lowStockModels: string[];
+  recentTransactions: Transaction[];
 }
 
-export interface Particle {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  color: string;
-  alpha: number;
-  size: number;
+export interface ProductionPlan {
+  id: string;
+  name: string; // Tên lô / Kế hoạch (VD: SX Tháng 10/2024)
+  productId: string; // Model áp dụng
+  createdDate: string;
+  serials: string[]; // Danh sách serial ban hành
 }
 
-export interface NumberConfig {
-  mode: 'RANGE' | 'LIST';
-  min: number;
-  max: number;
-  customList: number[]; // List of allowed numbers
-  names: Record<number, string>; // Map number to name
-  isAutoStop: boolean; // Enable auto-stop feature
-  spinDuration: number; // Duration in seconds before stopping
-  backgroundImage: string | null; // Custom background image
+export interface SalesOrderItem {
+  productId: string;
+  quantity: number;
+  scannedCount: number;
+}
+
+export interface SalesOrder {
+  id: string;
+  code: string;
+  type: 'SALE' | 'TRANSFER';
+  status: 'PENDING' | 'COMPLETED';
+  customerName?: string;
+  destinationWarehouse?: string;
+  createdDate: string;
+  items: SalesOrderItem[];
 }

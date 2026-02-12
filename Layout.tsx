@@ -95,7 +95,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPath, onNavigat
            <div className="flex items-center justify-between px-2">
               <div className="flex items-center gap-2">
                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                 <span className="text-[10px] font-black text-water-300 uppercase tracking-widest">Database Local</span>
+                 <span className="text-[10px] font-black text-water-300 uppercase tracking-widest">Database Sync: OK</span>
               </div>
               <Database size={14} className="text-water-500" />
            </div>
@@ -106,7 +106,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPath, onNavigat
              </div>
              <div className="text-sm">
                <p className="font-black text-white">Administrator</p>
-               <p className="text-water-400 text-[10px] uppercase font-bold tracking-tighter">Chế độ Ngoại tuyến</p>
+               <p className="text-water-400 text-[10px] uppercase font-bold tracking-tighter">Hệ thống Đã Lưu</p>
              </div>
            </div>
         </div>

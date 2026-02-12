@@ -2,12 +2,12 @@
 import { Product, SerialUnit, UnitStatus, Transaction, Warehouse, Customer, ProductionPlan, SalesOrder, SalesOrderItem } from './types';
 
 const STORAGE_KEY = 'RO_MASTER_DB_V3_FINAL';
-const DRAFT_KEY = 'RO_DRAFTS_PERSISTENCE';
+const DRAFT_KEY = 'RO_MASTER_DRAFTS_V3';
 
 interface DraftData {
-  inboundList: string[];
-  outboundList: string[];
-  productionCheckList: string[];
+  inbound: string[];
+  outbound: string[];
+  productionCheck: string[];
 }
 
 class InventoryService {
@@ -18,7 +18,7 @@ class InventoryService {
   private customers: Customer[] = [];
   private productionPlans: ProductionPlan[] = []; 
   private salesOrders: SalesOrder[] = [];
-  private drafts: DraftData = { inboundList: [], outboundList: [], productionCheckList: [] };
+  private drafts: DraftData = { inbound: [], outbound: [], productionCheck: [] };
 
   constructor() {
     this.loadFromStorage();
@@ -48,7 +48,7 @@ class InventoryService {
       try {
         this.drafts = JSON.parse(savedDrafts);
       } catch (e) {
-        console.error("Draft error:", e);
+        this.drafts = { inbound: [], outbound: [], productionCheck: [] };
       }
     }
   }
@@ -66,16 +66,18 @@ class InventoryService {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }
 
-  private persistDrafts() {
+  // --- DRAFT MANAGEMENT ---
+  getDrafts() { return this.drafts; }
+  
+  saveDraft(key: keyof DraftData, list: string[]) {
+    this.drafts[key] = list;
     localStorage.setItem(DRAFT_KEY, JSON.stringify(this.drafts));
   }
 
-  // --- DRAFT MANAGEMENT ---
-  getDrafts() { return this.drafts; }
-  saveInboundDraft(list: string[]) { this.drafts.inboundList = list; this.persistDrafts(); }
-  saveOutboundDraft(list: string[]) { this.drafts.outboundList = list; this.persistDrafts(); }
-  saveProductionDraft(list: string[]) { this.drafts.productionCheckList = list; this.persistDrafts(); }
-  clearDraft(key: keyof DraftData) { this.drafts[key] = []; this.persistDrafts(); }
+  clearDraft(key: keyof DraftData) {
+    this.drafts[key] = [];
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(this.drafts));
+  }
 
   resetDatabase() {
     localStorage.removeItem(STORAGE_KEY);

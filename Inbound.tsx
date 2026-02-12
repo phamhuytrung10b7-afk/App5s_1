@@ -21,19 +21,22 @@ export const Inbound: React.FC = () => {
   const [autoJump, setAutoJump] = useState(true);
   
   const [currentSerial, setCurrentSerial] = useState('');
-  const [recentScans, setRecentScans] = useState<{serial: string, time: string, wh: string, isReimport?: boolean}[]>([]);
+  const [serialList, setSerialList] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<{type: 'success' | 'error' | 'warning', text: string} | null>(null);
 
   // Recovery Draft Logic
   useEffect(() => {
-    const savedDrafts = inventoryService.getDrafts();
-    if (savedDrafts.inboundList && savedDrafts.inboundList.length > 0) {
-        // Chuyển đổi từ string list sang recentScans format
-        const recovered = savedDrafts.inboundList.map(item => JSON.parse(item));
-        setRecentScans(recovered);
+    const drafts = inventoryService.getDrafts();
+    if (drafts.inbound.length > 0) {
+      setSerialList(drafts.inbound);
     }
   }, []);
+
+  // Save Draft on change
+  useEffect(() => {
+    inventoryService.saveDraft('inbound', serialList);
+  }, [serialList]);
 
   useEffect(() => {
     if (activeTab === 'HISTORY') {
@@ -44,99 +47,60 @@ export const Inbound: React.FC = () => {
 
   useEffect(() => {
     if (activeTab === 'SCAN') inputRef.current?.focus();
-  }, [recentScans, message, selectedPlanId, activeTab, location, autoJump]);
+  }, [serialList, message, selectedPlanId, activeTab, location, autoJump]);
 
-  const handleAutoImport = (e?: React.FormEvent) => {
+  const handleAddSerial = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!selectedPlanId) {
+       playSound('error');
+       setMessage({ type: 'error', text: 'Vui lòng chọn Kế hoạch sản xuất trước!' });
+       return;
+    }
     const scannedCode = currentSerial.trim();
     if (!scannedCode) return;
-
-    const selectedPlan = plans.find(p => p.id === selectedPlanId);
-    const selectedProduct = selectedPlan ? inventoryService.getProductById(selectedPlan.productId) : null;
-
-    if (!selectedPlan || !selectedProduct) { 
-      playSound('error'); 
-      setMessage({ type: 'error', text: 'Vui lòng chọn Kế hoạch sản xuất trước!' }); 
-      return; 
+    
+    if (serialList.includes(scannedCode)) {
+      playSound('warning');
+      setMessage({ type: 'warning', text: `Mã ${scannedCode} đã trong danh sách quét!` });
+      setCurrentSerial('');
+      return;
     }
 
-    if (!selectedPlan.serials.includes(scannedCode)) { 
-      playSound('error'); 
-      setMessage({ type: 'error', text: `Mã ${scannedCode} KHÔNG thuộc kế hoạch này!` }); 
+    const selectedPlan = plans.find(p => p.id === selectedPlanId);
+    if (!selectedPlan?.serials.includes(scannedCode)) {
+      playSound('error');
+      setMessage({ type: 'error', text: `Mã ${scannedCode} không thuộc kế hoạch này!` });
       setCurrentSerial('');
-      return; 
+      return;
     }
 
     const unit = inventoryService.getUnitBySerial(scannedCode);
-    let isReimportCandidate = false;
-
-    if (unit) {
-      if (unit.status === UnitStatus.NEW) {
-        playSound('error');
-        setMessage({ type: 'error', text: `Lỗi: Mã ${scannedCode} đã có sẵn trong kho ${unit.warehouseLocation}!` });
-        setCurrentSerial('');
-        return;
-      }
-      if (unit.status === UnitStatus.SOLD) {
-        if (unit.isReimported) {
-          playSound('error');
-          setMessage({ type: 'error', text: `Lỗi: Mã ${scannedCode} đã từng tái nhập 1 lần rồi.` });
-          setCurrentSerial('');
-          return;
-        }
-        isReimportCandidate = true;
-      }
+    if (unit && unit.status === UnitStatus.NEW) {
+       playSound('error');
+       setMessage({ type: 'error', text: `Mã ${scannedCode} đang tồn kho!` });
+       setCurrentSerial('');
+       return;
     }
 
-    let targetWhName = location;
-    const currentStock = inventoryService.getWarehouseCurrentStock(targetWhName);
-    const capacity = warehouses.find(w => w.name === targetWhName)?.maxCapacity || 9999;
+    playSound('success');
+    setSerialList([...serialList, scannedCode]);
+    setCurrentSerial('');
+    setMessage({ type: 'success', text: `Đã thêm: ${scannedCode}` });
+  };
 
-    if (currentStock >= capacity) {
-      if (autoJump) {
-        const nextWh = warehouses.find(w => inventoryService.getWarehouseCurrentStock(w.name) < (w.maxCapacity || 9999));
-        if (nextWh) {
-          targetWhName = nextWh.name;
-          setLocation(targetWhName);
-          setMessage({ type: 'warning', text: `Tự động chuyển sang ${targetWhName}` });
-        } else {
-          playSound('error');
-          setMessage({ type: 'error', text: 'Hết sức chứa tất cả các kho!' });
-          return;
-        }
-      } else {
-        playSound('error');
-        setMessage({ type: 'error', text: 'Kho đã đầy sức chứa!' });
-        return;
-      }
-    }
-
+  const handleSubmit = () => {
     try {
-      inventoryService.importUnits(selectedProduct.id, [scannedCode], targetWhName, selectedPlan.name);
-      playSound(isReimportCandidate ? 'warning' : 'success');
-      
-      const newScan = { 
-        serial: scannedCode, 
-        time: new Date().toLocaleTimeString('vi-VN'), 
-        wh: targetWhName,
-        isReimport: isReimportCandidate
-      };
-      
-      const updatedScans = [newScan, ...recentScans.slice(0, 29)];
-      setRecentScans(updatedScans);
-      
-      // Persist Draft
-      inventoryService.saveInboundDraft(updatedScans.map(s => JSON.stringify(s)));
-
-      setMessage({ 
-        type: isReimportCandidate ? 'warning' : 'success', 
-        text: isReimportCandidate ? `TÁI NHẬP: ${scannedCode}` : `Thành công: ${scannedCode}` 
-      });
+      const selectedPlan = plans.find(p => p.id === selectedPlanId);
+      if (!selectedPlan) throw new Error("Vui lòng chọn Kế hoạch");
+      inventoryService.importUnits(selectedPlan.productId, serialList, location, selectedPlan.name);
+      playSound('success');
+      setMessage({ type: 'success', text: `Đã nhập kho thành công ${serialList.length} máy.` });
+      setSerialList([]);
+      inventoryService.clearDraft('inbound');
     } catch (err: any) {
       playSound('error');
       setMessage({ type: 'error', text: err.message });
     }
-    setCurrentSerial('');
   };
 
   return (
@@ -144,15 +108,14 @@ export const Inbound: React.FC = () => {
       <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-100">
          <div className="flex items-center gap-3">
              <div className="bg-green-600 p-3 rounded-full text-white shadow-lg shadow-green-100"><Zap /></div>
-             <div><h2 className="text-xl font-bold">Nhập Kho Thông Minh</h2><p className="text-slate-500 text-sm">Hệ thống tự động lưu trữ dữ liệu tức thì.</p></div>
+             <div><h2 className="text-xl font-bold">Nhập Kho Hoàn Hảo</h2><p className="text-slate-500 text-sm">Mọi mã quét đều được lưu giữ vĩnh viễn.</p></div>
          </div>
          <div className="flex items-center gap-4">
-            <div className="hidden md:flex items-center gap-1.5 text-green-600 bg-green-50 px-3 py-1.5 rounded-full border border-green-100">
-               <Database size={14} className="animate-pulse"/>
-               <span className="text-[10px] font-black uppercase tracking-widest">Auto-Saved</span>
+            <div className="flex items-center gap-1 text-[10px] font-black text-green-600 bg-green-50 px-2 py-1 rounded-full border border-green-100 animate-pulse">
+               <Database size={12}/> Auto-saved
             </div>
             <div className="flex bg-slate-100 p-1 rounded-lg">
-                <button onClick={() => setActiveTab('SCAN')} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'SCAN' ? 'bg-white shadow text-green-700' : 'text-slate-500'}`}>Quét Nhập</button>
+                <button onClick={() => setActiveTab('SCAN')} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'SCAN' ? 'bg-white shadow text-green-700' : 'text-slate-50'}`}>Quét Nhập</button>
                 <button onClick={() => setActiveTab('HISTORY')} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'HISTORY' ? 'bg-white shadow text-green-700' : 'text-slate-500'}`}>Lịch sử</button>
             </div>
          </div>
@@ -163,19 +126,14 @@ export const Inbound: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
               <div className="space-y-4">
                   <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
-                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Kế hoạch đang xử lý</label>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Kế hoạch sản xuất</label>
                       <select className="w-full p-3 border rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-400 font-bold text-slate-800" value={selectedPlanId} onChange={(e) => setSelectedPlanId(e.target.value)}>
                          <option value="">-- Chọn Kế hoạch --</option>
                          {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                       </select>
                   </div>
                   <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
-                      <div className="flex justify-between items-center mb-3">
-                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Kho đích</label>
-                         <button onClick={() => setAutoJump(!autoJump)} className={`flex items-center gap-1 text-[10px] font-black uppercase transition-all ${autoJump ? 'text-green-600' : 'text-slate-400'}`}>
-                            {autoJump ? <ToggleRight size={18}/> : <ToggleLeft size={18}/>} Auto Jump
-                         </button>
-                      </div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Kho nhập hàng</label>
                       <select className="w-full p-3 border rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-400 font-bold text-slate-800" value={location} onChange={(e) => setLocation(e.target.value)}>
                          {warehouses.map(wh => <option key={wh.id} value={wh.name}>{wh.name}</option>)}
                       </select>
@@ -184,12 +142,11 @@ export const Inbound: React.FC = () => {
 
               <div className={`flex flex-col justify-center ${!selectedPlanId ? 'opacity-30 pointer-events-none' : ''}`}>
                   <label className="block text-[10px] font-black text-green-600 uppercase tracking-widest mb-3 flex items-center gap-1">
-                    <Zap size={12}/> Quét IMEI (Xử lý an toàn)
+                    <Zap size={12}/> Quét IMEI (Dữ liệu sẽ được lưu tự động)
                   </label>
-                  <form onSubmit={handleAutoImport}>
+                  <form onSubmit={handleAddSerial}>
                      <input ref={inputRef} type="text" placeholder="Quét mã vạch..." className="w-full p-4 border-2 border-green-100 rounded-2xl font-mono text-2xl shadow-sm outline-none focus:border-green-500 transition-all bg-green-50/30" value={currentSerial} onChange={(e) => setCurrentSerial(e.target.value)} />
                   </form>
-                  <p className="text-[10px] text-slate-400 mt-2 italic">* Dữ liệu được lưu vĩnh viễn trên máy tính này.</p>
               </div>
             </div>
 
@@ -200,25 +157,48 @@ export const Inbound: React.FC = () => {
                </div>
             )}
 
+            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-inner mb-8">
+                  <label className="block text-xs font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Trạng thái lấp đầy các kho</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                     {warehouses.map(wh => {
+                        const stock = inventoryService.getWarehouseCurrentStock(wh.name);
+                        const capacity = wh.maxCapacity || 9999;
+                        const isFull = stock >= capacity;
+                        const isSelected = location === wh.name;
+
+                        return (
+                          <div key={wh.id} className={`relative p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 cursor-pointer ${isSelected ? 'border-green-500 bg-white shadow-lg scale-105 z-10' : 'border-slate-200 bg-slate-50 opacity-60'}`} onClick={() => setLocation(wh.name)}>
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isFull ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'} ${isSelected ? 'bg-green-600 text-white' : ''}`}>
+                              <Warehouse size={20} />
+                            </div>
+                            <div className="text-center">
+                              <p className="text-[10px] font-black text-slate-800 uppercase truncate w-24">{wh.name}</p>
+                              <p className={`text-[10px] font-bold ${isFull ? 'text-red-500' : 'text-slate-400'}`}>{stock} / {capacity}</p>
+                            </div>
+                            {isSelected && <div className="absolute -top-2 bg-green-600 text-white text-[8px] px-2 py-0.5 rounded-full font-black shadow-sm">ĐANG CHỌN</div>}
+                          </div>
+                        );
+                     })}
+                  </div>
+            </div>
+
             <div className="border-t pt-6">
                 <div className="flex justify-between items-center mb-4">
                   <h4 className="font-black text-slate-400 text-xs uppercase tracking-widest flex items-center gap-2">
-                     <History size={14}/> Nhật ký quét gần đây (Đã lưu)
+                     <History size={14}/> Danh sách đang quét ({serialList.length})
                   </h4>
-                  <button onClick={() => { inventoryService.clearDraft('inboundList'); setRecentScans([]); }} className="text-[10px] text-red-500 hover:underline font-bold uppercase">Xóa danh sách này</button>
+                  {serialList.length > 0 && (
+                    <button onClick={handleSubmit} className="bg-green-600 text-white px-6 py-2 rounded-xl font-bold shadow-lg hover:bg-green-700 transition-all flex items-center gap-2">Xác nhận Nhập Kho <ArrowRight size={18}/></button>
+                  )}
                 </div>
-                <div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar">
-                   {recentScans.map((s, idx) => (
-                     <div key={idx} className={`flex justify-between items-center bg-white p-3 rounded-xl border shadow-sm animate-slide-in ${s.isReimport ? 'border-orange-200' : 'border-slate-100'}`}>
+                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
+                   {serialList.map((sn, idx) => (
+                     <div key={idx} className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100 shadow-sm animate-slide-in">
                         <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold border ${s.isReimport ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-green-50 text-green-600 border-green-100'}`}>{recentScans.length - idx}</div>
-                          <span className="font-mono font-black text-slate-700">{s.serial}</span>
-                          {s.isReimport && <span className="text-[8px] font-black bg-orange-600 text-white px-1.5 py-0.5 rounded uppercase">Tái nhập</span>}
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold border bg-green-50 text-green-600 border-green-100">{serialList.length - idx}</div>
+                          <span className="font-mono font-black text-slate-700">{sn}</span>
                         </div>
-                        <div className="flex items-center gap-4 text-[10px] font-bold">
-                          <span className="text-blue-600 uppercase tracking-tight">KHO: {s.wh}</span>
-                          <span className="text-slate-400">{s.time}</span>
-                        </div>
+                        <button onClick={() => setSerialList(serialList.filter(s => s !== sn))} className="text-slate-300 hover:text-red-500 p-2"><Trash2 size={16}/></button>
                      </div>
                    ))}
                 </div>

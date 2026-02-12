@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { inventoryService } from './inventoryService';
 import { exportTransactionHistory } from './reportService';
-import { Upload, CheckCircle, XCircle, Search, ArrowRightLeft, Store, Warehouse, ArrowRight, History, Plus, Calendar, ChevronDown, ChevronUp, FileSpreadsheet, MapPin, Trash2, Info, Zap, AlertTriangle } from 'lucide-react';
+import { Upload, CheckCircle, XCircle, Search, ArrowRightLeft, Store, Warehouse, ArrowRight, History, Plus, Calendar, ChevronDown, ChevronUp, FileSpreadsheet, MapPin, Trash2, Info, Zap, AlertTriangle, ToggleLeft, ToggleRight } from 'lucide-react';
 import { playSound } from './sound';
 import { Transaction, UnitStatus } from './types';
 
@@ -21,6 +21,7 @@ export const Outbound: React.FC = () => {
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [targetId, setTargetId] = useState<string>(''); 
   const [sourceWarehouse, setSourceWarehouse] = useState(warehouses.length > 0 ? warehouses[0].name : '');
+  const [autoDetect, setAutoDetect] = useState(true); // Quyền chọn tự động nhận diện kho
   
   const [currentSerial, setCurrentSerial] = useState('');
   const [recentScans, setRecentScans] = useState<{serial: string, time: string, fromWh: string, to: string}[]>([]);
@@ -36,7 +37,7 @@ export const Outbound: React.FC = () => {
 
   useEffect(() => {
     if (activeTab === 'SCAN') inputRef.current?.focus();
-  }, [recentScans, message, selectedProductId, activeTab, sourceWarehouse, outboundType, targetId]);
+  }, [recentScans, message, selectedProductId, activeTab, sourceWarehouse, outboundType, targetId, autoDetect]);
 
   const handleAutoExport = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -73,16 +74,30 @@ export const Outbound: React.FC = () => {
 
     if (unit.status !== UnitStatus.NEW) {
        playSound('error');
-       setMessage({ type: 'error', text: `Mã ${scannedCode} đã được xuất trước đó.` });
+       setMessage({ type: 'error', text: `Mã ${scannedCode} đã xuất/bán trước đó.` });
        setCurrentSerial('');
        return;
     }
 
     let actualLoc = unit.warehouseLocation;
+    let exportWhName = sourceWarehouse;
     let warningMsg = '';
-    if (actualLoc !== sourceWarehouse) {
-       setSourceWarehouse(actualLoc);
-       warningMsg = `Tự động nhảy sang ${actualLoc} (Vị trí thực tế của máy).`;
+
+    // KIỂM TRA QUYỀN CHỌN KHO
+    if (autoDetect) {
+       if (actualLoc !== sourceWarehouse) {
+          setSourceWarehouse(actualLoc);
+          exportWhName = actualLoc;
+          warningMsg = `Tự động nhận diện: Máy nằm tại ${actualLoc}.`;
+       }
+    } else {
+       // Chế độ thủ công: Chỉ cho xuất nếu đúng kho đã chọn
+       if (actualLoc !== sourceWarehouse) {
+          playSound('error');
+          setMessage({ type: 'error', text: `LỖI: Máy này nằm ở ${actualLoc}, không phải ${sourceWarehouse}!` });
+          setCurrentSerial('');
+          return;
+       }
     }
 
     try {
@@ -91,7 +106,7 @@ export const Outbound: React.FC = () => {
         : (warehouses.find(w => w.id === targetId)?.name || 'Kho đích');
 
       if (outboundType === 'SALE') {
-        inventoryService.exportUnits(selectedProductId, [scannedCode], targetName, actualLoc);
+        inventoryService.exportUnits(selectedProductId, [scannedCode], targetName, exportWhName);
       } else {
         inventoryService.transferUnits(selectedProductId, [scannedCode], targetName);
       }
@@ -100,7 +115,7 @@ export const Outbound: React.FC = () => {
       const newScan = {
         serial: scannedCode,
         time: new Date().toLocaleTimeString('vi-VN'),
-        fromWh: actualLoc,
+        fromWh: exportWhName,
         to: targetName
       };
       setRecentScans([newScan, ...recentScans.slice(0, 19)]);
@@ -122,7 +137,7 @@ export const Outbound: React.FC = () => {
       <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-100">
          <div className="flex items-center gap-3">
              <div className="bg-blue-600 p-3 rounded-full text-white shadow-lg shadow-blue-100"><Zap /></div>
-             <div><h2 className="text-xl font-bold">Xuất Kho Tức Thì</h2><p className="text-slate-500 text-sm">Quét là đi, tự động nhận diện kho nguồn.</p></div>
+             <div><h2 className="text-xl font-bold">Xuất Kho Tức Thì</h2><p className="text-slate-500 text-sm">Kiểm soát kho xuất đi theo ý muốn của bạn.</p></div>
          </div>
          <div className="flex bg-slate-100 p-1 rounded-lg">
              <button onClick={() => setActiveTab('SCAN')} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'SCAN' ? 'bg-white shadow text-blue-700' : 'text-slate-500'}`}>Quét Xuất</button>
@@ -133,30 +148,44 @@ export const Outbound: React.FC = () => {
       {activeTab === 'SCAN' && (
         <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-100 animate-fade-in">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-            <div className="space-y-4 bg-slate-50 p-6 rounded-2xl border border-slate-200">
-                <div className="flex bg-white rounded-xl p-1 border border-slate-200 shadow-sm mb-4">
-                  <button className={`flex-1 py-2 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2 ${outboundType === 'SALE' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500'}`} onClick={() => {setOutboundType('SALE'); setTargetId('');}}>
-                      <Store size={16}/> Xuất Bán
-                  </button>
-                  <button className={`flex-1 py-2 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2 ${outboundType === 'TRANSFER' ? 'bg-orange-500 text-white shadow-md' : 'text-slate-500'}`} onClick={() => {setOutboundType('TRANSFER'); setTargetId('');}}>
-                      <ArrowRightLeft size={16}/> Điều Chuyển
-                  </button>
+            <div className="space-y-4">
+                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                    <div className="flex bg-white rounded-xl p-1 border border-slate-200 shadow-sm mb-4">
+                      <button className={`flex-1 py-2 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2 ${outboundType === 'SALE' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500'}`} onClick={() => {setOutboundType('SALE'); setTargetId('');}}>
+                          <Store size={16}/> Xuất Bán
+                      </button>
+                      <button className={`flex-1 py-2 rounded-lg font-bold text-sm transition-all flex items-center justify-center gap-2 ${outboundType === 'TRANSFER' ? 'bg-orange-500 text-white shadow-md' : 'text-slate-500'}`} onClick={() => {setOutboundType('TRANSFER'); setTargetId('');}}>
+                          <ArrowRightLeft size={16}/> Điều Chuyển
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Model & Nơi nhận</label>
+                      <select className="w-full p-3 border rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-400 font-bold text-slate-700" value={selectedProductId} onChange={(e) => setSelectedProductId(e.target.value)}>
+                        <option value="">-- Chọn Model xuất --</option>
+                        {products.map(p => <option key={p.id} value={p.id}>{p.model}</option>)}
+                      </select>
+
+                      <select className="w-full p-3 border rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-400 font-bold text-slate-700" value={targetId} onChange={(e) => setTargetId(e.target.value)}>
+                        <option value="">{outboundType === 'SALE' ? '-- Chọn Khách hàng --' : '-- Chọn Kho nhận --'}</option>
+                        {outboundType === 'SALE' 
+                          ? customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>) 
+                          : warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)
+                        }
+                      </select>
+                    </div>
                 </div>
 
-                <div className="space-y-3">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Model & Nơi nhận</label>
-                  <select className="w-full p-3 border rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-400 font-bold text-slate-700" value={selectedProductId} onChange={(e) => setSelectedProductId(e.target.value)}>
-                    <option value="">-- Chọn Model xuất --</option>
-                    {products.map(p => <option key={p.id} value={p.id}>{p.model}</option>)}
-                  </select>
-
-                  <select className="w-full p-3 border rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-400 font-bold text-slate-700" value={targetId} onChange={(e) => setTargetId(e.target.value)}>
-                    <option value="">{outboundType === 'SALE' ? '-- Chọn Khách hàng --' : '-- Chọn Kho nhận --'}</option>
-                    {outboundType === 'SALE' 
-                      ? customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>) 
-                      : warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)
-                    }
-                  </select>
+                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                    <div className="flex justify-between items-center mb-3">
+                       <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Kho xuất hàng (Kho nguồn)</label>
+                       <button onClick={() => setAutoDetect(!autoDetect)} className={`flex items-center gap-2 text-[10px] font-black uppercase transition-all ${autoDetect ? 'text-blue-600' : 'text-slate-400'}`}>
+                          {autoDetect ? <ToggleRight size={20}/> : <ToggleLeft size={20}/>} {autoDetect ? 'Auto Detect: ON' : 'Manual Mode'}
+                       </button>
+                    </div>
+                    <select className="w-full p-3 border rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-400 font-bold text-slate-700" value={sourceWarehouse} onChange={(e) => setSourceWarehouse(e.target.value)}>
+                       {warehouses.map(wh => <option key={wh.id} value={wh.name}>{wh.name}</option>)}
+                    </select>
                 </div>
             </div>
 
@@ -168,13 +197,13 @@ export const Outbound: React.FC = () => {
                    <input 
                       ref={inputRef} 
                       type="text" 
-                      placeholder="Quét mã vạch xuất kho..." 
+                      placeholder="Quét mã vạch xuất..." 
                       className="w-full p-4 border-2 border-blue-100 rounded-2xl font-mono text-2xl shadow-sm outline-none focus:border-blue-500 transition-all bg-blue-50/30" 
                       value={currentSerial} 
                       onChange={(e) => setCurrentSerial(e.target.value)} 
                    />
                 </form>
-                <p className="text-[10px] text-slate-400 mt-2 italic">* Máy ở bất kỳ kho nào cũng sẽ được tự động nhận diện.</p>
+                <p className="text-[10px] text-slate-400 mt-2 italic">* {autoDetect ? 'Hệ thống sẽ tự nhận diện máy nằm ở đâu.' : 'Chỉ cho xuất máy nằm trong kho đã chọn.'}</p>
             </div>
           </div>
 
@@ -197,29 +226,17 @@ export const Outbound: React.FC = () => {
                       return (
                         <div 
                           key={wh.id}
-                          className={`
-                            relative p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2
-                            ${isSelected ? 'border-blue-500 bg-white shadow-lg scale-105 z-10' : 'border-slate-200 bg-slate-50 opacity-60'}
-                          `}
+                          className={`relative p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 cursor-pointer ${isSelected ? 'border-blue-500 bg-white shadow-lg scale-105 z-10' : 'border-slate-200 bg-slate-50 opacity-60'}`}
+                          onClick={() => setSourceWarehouse(wh.name)}
                         >
-                          <div className={`
-                            w-10 h-10 rounded-xl flex items-center justify-center
-                            ${isEmpty ? 'bg-slate-200 text-slate-400' : 'bg-blue-100 text-blue-600'}
-                            ${isSelected ? 'bg-blue-600 text-white' : ''}
-                          `}>
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isEmpty ? 'bg-slate-200 text-slate-400' : 'bg-blue-100 text-blue-600'} ${isSelected ? 'bg-blue-600 text-white' : ''}`}>
                             <Warehouse size={20} />
                           </div>
                           <div className="text-center">
                             <p className="text-[10px] font-black text-slate-800 uppercase truncate w-24">{wh.name}</p>
-                            <p className={`text-[10px] font-bold ${isEmpty ? 'text-slate-400' : 'text-blue-500'}`}>
-                              Tồn: {stock} máy
-                            </p>
+                            <p className={`text-[10px] font-bold ${isEmpty ? 'text-slate-400' : 'text-blue-500'}`}>Tồn: {stock}</p>
                           </div>
-                          {isSelected && (
-                            <div className="absolute -top-2 bg-blue-600 text-white text-[8px] px-2 py-0.5 rounded-full font-black shadow-sm">
-                              HÀNG ĐANG RA
-                            </div>
-                          )}
+                          {isSelected && <div className="absolute -top-2 bg-blue-600 text-white text-[8px] px-2 py-0.5 rounded-full font-black shadow-sm">ĐANG CHỌN</div>}
                         </div>
                       );
                    })}
@@ -228,7 +245,7 @@ export const Outbound: React.FC = () => {
 
           <div className="border-t pt-6">
               <h4 className="font-black text-slate-400 text-xs uppercase tracking-widest flex items-center gap-2 mb-4">
-                 <History size={14}/> Nhật ký xuất gần đây (Đã xử lý)
+                 <History size={14}/> Nhật ký xuất gần đây
               </h4>
               <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                  {recentScans.map((s, idx) => (
@@ -254,6 +271,7 @@ export const Outbound: React.FC = () => {
 
       {activeTab === 'HISTORY' && (
          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 space-y-6 animate-fade-in">
+             {/* Giữ nguyên phần lịch sử như phiên bản trước */}
              <div className="flex flex-col md:flex-row justify-between items-end gap-4 border-b pb-6">
                 <div className="flex gap-4 w-full md:w-auto">
                    <div className="flex-1">

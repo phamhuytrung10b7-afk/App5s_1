@@ -2,6 +2,13 @@
 import { Product, SerialUnit, UnitStatus, Transaction, Warehouse, Customer, ProductionPlan, SalesOrder, SalesOrderItem } from './types';
 
 const STORAGE_KEY = 'RO_MASTER_DB_V3_FINAL';
+const DRAFT_KEY = 'RO_DRAFTS_PERSISTENCE';
+
+interface DraftData {
+  inboundList: string[];
+  outboundList: string[];
+  productionCheckList: string[];
+}
 
 class InventoryService {
   private products: Product[] = [];
@@ -11,6 +18,7 @@ class InventoryService {
   private customers: Customer[] = [];
   private productionPlans: ProductionPlan[] = []; 
   private salesOrders: SalesOrder[] = [];
+  private drafts: DraftData = { inboundList: [], outboundList: [], productionCheckList: [] };
 
   constructor() {
     this.loadFromStorage();
@@ -28,12 +36,21 @@ class InventoryService {
         this.customers = parsed.customers || [];
         this.productionPlans = parsed.productionPlans || [];
         this.salesOrders = parsed.salesOrders || [];
-        return;
       } catch (e) {
         console.error("Storage error:", e);
       }
+    } else {
+      this.warehouses = [{ id: 'wh-default', name: 'Kho Tổng', maxCapacity: 1000 }];
     }
-    this.warehouses = [{ id: 'wh-default', name: 'Kho Tổng', maxCapacity: 1000 }];
+
+    const savedDrafts = localStorage.getItem(DRAFT_KEY);
+    if (savedDrafts) {
+      try {
+        this.drafts = JSON.parse(savedDrafts);
+      } catch (e) {
+        console.error("Draft error:", e);
+      }
+    }
   }
 
   private persist() {
@@ -49,8 +66,20 @@ class InventoryService {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }
 
+  private persistDrafts() {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(this.drafts));
+  }
+
+  // --- DRAFT MANAGEMENT ---
+  getDrafts() { return this.drafts; }
+  saveInboundDraft(list: string[]) { this.drafts.inboundList = list; this.persistDrafts(); }
+  saveOutboundDraft(list: string[]) { this.drafts.outboundList = list; this.persistDrafts(); }
+  saveProductionDraft(list: string[]) { this.drafts.productionCheckList = list; this.persistDrafts(); }
+  clearDraft(key: keyof DraftData) { this.drafts[key] = []; this.persistDrafts(); }
+
   resetDatabase() {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(DRAFT_KEY);
     window.location.reload();
   }
 
@@ -121,7 +150,6 @@ class InventoryService {
 
     const finalAssignments: { location: string, serials: string[] }[] = [];
 
-    // Phân bổ vào kho
     while (remainingSerials.length > 0 && whIdx < allWhs.length) {
       const currentWh = allWhs[whIdx];
       const currentStock = this.getWarehouseCurrentStock(currentWh.name);
@@ -145,43 +173,19 @@ class InventoryService {
     const updatedUnits = [...this.units];
     finalAssignments.forEach(assign => {
       let isReimportTx = false;
-      const currentBatchSerials: string[] = [];
-
       assign.serials.forEach(s => {
         const idx = updatedUnits.findIndex(u => u.serialNumber === s);
         if (idx !== -1) {
           const existingUnit = updatedUnits[idx];
-          
-          // KIỂM TRA ĐIỀU KIỆN TÁI NHẬP: 
-          // 1. Phải đang ở trạng thái SOLD
-          // 2. Chưa từng được tái nhập trước đó (isReimported phải là false/undefined)
           if (existingUnit.status === UnitStatus.SOLD) {
-             if (existingUnit.isReimported) {
-                throw new Error(`Mã ${s} đã từng được tái nhập 1 lần rồi, không thể nhập lại lần thứ 2.`);
-             }
-             
-             updatedUnits[idx] = { 
-               ...existingUnit, 
-               status: UnitStatus.NEW, 
-               warehouseLocation: assign.location, 
-               importDate: new Date().toISOString(), 
-               isReimported: true // Đánh dấu đã tái nhập
-             };
+             if (existingUnit.isReimported) throw new Error(`Mã ${s} đã từng được tái nhập rồi.`);
+             updatedUnits[idx] = { ...existingUnit, status: UnitStatus.NEW, warehouseLocation: assign.location, importDate: new Date().toISOString(), isReimported: true };
              isReimportTx = true;
           } else {
-             // Nếu máy đang ở trạng thái NEW hoặc khác, thông báo lỗi (thường UI đã chặn)
-             throw new Error(`Mã ${s} hiện đang tồn kho, không cần nhập lại.`);
+             throw new Error(`Mã ${s} hiện đang tồn kho.`);
           }
         } else {
-          // Nhập mới hoàn toàn
-          updatedUnits.push({ 
-            serialNumber: s, 
-            productId, 
-            status: UnitStatus.NEW, 
-            warehouseLocation: assign.location, 
-            importDate: new Date().toISOString(), 
-            isReimported: false 
-          });
+          updatedUnits.push({ serialNumber: s, productId, status: UnitStatus.NEW, warehouseLocation: assign.location, importDate: new Date().toISOString(), isReimported: false });
         }
       });
 
@@ -220,14 +224,7 @@ class InventoryService {
   }
 
   exportUnits(productId: string, serials: string[], customer: string, fromLoc: string) {
-    this.units = this.units.map(u => serials.includes(u.serialNumber) ? { 
-      ...u, 
-      status: UnitStatus.SOLD, 
-      exportDate: new Date().toISOString(), 
-      customerName: customer, 
-      warehouseLocation: 'OUT' 
-    } : u);
-    
+    this.units = this.units.map(u => serials.includes(u.serialNumber) ? { ...u, status: UnitStatus.SOLD, exportDate: new Date().toISOString(), customerName: customer, warehouseLocation: 'OUT' } : u);
     this.transactions = [{ 
       id: `tx-out-${Date.now()}`, 
       type: 'OUTBOUND', 

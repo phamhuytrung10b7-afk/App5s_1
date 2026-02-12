@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { inventoryService } from './inventoryService';
 import { exportTransactionHistory } from './reportService';
-import { Scan, Plus, Trash2, CheckCircle, Warehouse, AlertTriangle, XCircle, ArrowRight, History, ChevronDown, ChevronUp, Calendar, Box, FileSpreadsheet, RefreshCw, Info, Zap } from 'lucide-react';
+import { Scan, Plus, Trash2, CheckCircle, Warehouse, AlertTriangle, XCircle, ArrowRight, History, ChevronDown, ChevronUp, Calendar, Box, FileSpreadsheet, RefreshCw, Info, Zap, RefreshCcw } from 'lucide-react';
 import { playSound } from './sound';
 import { ProductionPlan, UnitStatus, Transaction } from './types';
 
@@ -23,7 +23,7 @@ export const Inbound: React.FC = () => {
   const selectedProduct = selectedPlan ? inventoryService.getProductById(selectedPlan.productId) : null;
   
   const [currentSerial, setCurrentSerial] = useState('');
-  const [recentScans, setRecentScans] = useState<{serial: string, time: string, wh: string}[]>([]);
+  const [recentScans, setRecentScans] = useState<{serial: string, time: string, wh: string, isReimport?: boolean}[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<{type: 'success' | 'error' | 'warning', text: string} | null>(null);
 
@@ -57,11 +57,25 @@ export const Inbound: React.FC = () => {
     }
 
     const unit = inventoryService.getUnitBySerial(scannedCode);
-    if (unit && unit.status === UnitStatus.NEW) {
-      playSound('error');
-      setMessage({ type: 'error', text: `Lỗi: Mã ${scannedCode} đã có sẵn trong kho ${unit.warehouseLocation}!` });
-      setCurrentSerial('');
-      return;
+    let isReimportCandidate = false;
+
+    if (unit) {
+      if (unit.status === UnitStatus.NEW) {
+        playSound('error');
+        setMessage({ type: 'error', text: `Lỗi: Mã ${scannedCode} đã có sẵn trong kho ${unit.warehouseLocation}!` });
+        setCurrentSerial('');
+        return;
+      }
+      
+      if (unit.status === UnitStatus.SOLD) {
+        if (unit.isReimported) {
+          playSound('error');
+          setMessage({ type: 'error', text: `Lỗi: Mã ${scannedCode} đã từng tái nhập 1 lần, không được phép nhập lại lần 2.` });
+          setCurrentSerial('');
+          return;
+        }
+        isReimportCandidate = true;
+      }
     }
 
     // --- LOGIC TỰ ĐỘNG CHUYỂN KHO KHI ĐẦY ---
@@ -71,11 +85,10 @@ export const Inbound: React.FC = () => {
     const capacity = currentWh?.maxCapacity || 9999;
 
     if (currentStock >= capacity) {
-      // Tìm kho tiếp theo còn chỗ
       const nextAvailableWh = warehouses.find(w => inventoryService.getWarehouseCurrentStock(w.name) < (w.maxCapacity || 9999));
       if (nextAvailableWh) {
         targetWhName = nextAvailableWh.name;
-        setLocation(targetWhName); // Tự động nhảy UI sang kho mới
+        setLocation(targetWhName);
         setMessage({ type: 'warning', text: `Kho cũ đã đầy! Tự động chuyển sang ${targetWhName}` });
       } else {
         playSound('error');
@@ -85,21 +98,24 @@ export const Inbound: React.FC = () => {
       }
     }
 
-    // Thực hiện nhập ngay lập tức
     try {
       inventoryService.importUnits(selectedProduct.id, [scannedCode], targetWhName, selectedPlan.name);
-      playSound('success');
+      playSound(isReimportCandidate ? 'warning' : 'success'); // Phát âm thanh khác cho hàng tái nhập
       
       const newScan = { 
         serial: scannedCode, 
         time: new Date().toLocaleTimeString('vi-VN'), 
-        wh: targetWhName 
+        wh: targetWhName,
+        isReimport: isReimportCandidate
       };
-      setRecentScans([newScan, ...recentScans.slice(0, 19)]); // Giữ 20 lần quét gần nhất
+      setRecentScans([newScan, ...recentScans.slice(0, 19)]);
       
-      if (!message || message.type !== 'warning') {
-        setMessage({ type: 'success', text: `Đã nhập thành công: ${scannedCode} vào ${targetWhName}` });
-      }
+      setMessage({ 
+        type: isReimportCandidate ? 'warning' : 'success', 
+        text: isReimportCandidate 
+          ? `PHÁT HIỆN TÁI NHẬP: Đã nhập lại mã ${scannedCode} vào ${targetWhName}`
+          : `Đã nhập thành công: ${scannedCode} vào ${targetWhName}` 
+      });
     } catch (err: any) {
       playSound('error');
       setMessage({ type: 'error', text: err.message });
@@ -132,7 +148,6 @@ export const Inbound: React.FC = () => {
             {plans.length === 0 ? <div className="text-center p-8 text-slate-500 italic">Chưa có kế hoạch sản xuất.</div> : (
                <>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                    {/* Chọn Kế hoạch */}
                     <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Lô sản xuất đang xử lý</label>
                         <select className="w-full p-3 border rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-400 font-bold text-slate-800" value={selectedPlanId} onChange={(e) => { setSelectedPlanId(e.target.value); setMessage(null); }}>
@@ -147,7 +162,6 @@ export const Inbound: React.FC = () => {
                         )}
                     </div>
 
-                    {/* Input Quét chính */}
                     <div className={`flex flex-col justify-center ${!selectedPlanId ? 'opacity-30 pointer-events-none' : ''}`}>
                         <label className="block text-[10px] font-black text-water-600 uppercase tracking-widest mb-3 flex items-center gap-1">
                           <Zap size={12}/> Quét IMEI tại đây (Xử lý tức thì)
@@ -173,7 +187,6 @@ export const Inbound: React.FC = () => {
                      </div>
                   )}
 
-                  {/* Lưới chọn kho hiển thị trạng thái */}
                   <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-inner mb-8">
                         <label className="block text-xs font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Trạng thái lấp đầy các kho</label>
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
@@ -215,7 +228,6 @@ export const Inbound: React.FC = () => {
                         </div>
                   </div>
 
-                  {/* Nhật ký quét gần đây */}
                   <div className="border-t pt-6">
                       <div className="flex justify-between items-center mb-4">
                         <h4 className="font-black text-slate-400 text-xs uppercase tracking-widest flex items-center gap-2">
@@ -224,12 +236,17 @@ export const Inbound: React.FC = () => {
                       </div>
                       <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                          {recentScans.map((s, idx) => (
-                           <div key={idx} className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100 shadow-sm animate-slide-in">
+                           <div key={idx} className={`flex justify-between items-center bg-white p-3 rounded-xl border shadow-sm animate-slide-in ${s.isReimport ? 'border-orange-200' : 'border-slate-100'}`}>
                               <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-green-50 text-green-600 flex items-center justify-center text-[10px] font-bold border border-green-100">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold border ${s.isReimport ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-green-50 text-green-600 border-green-100'}`}>
                                   {recentScans.length - idx}
                                 </div>
                                 <span className="font-mono font-black text-slate-700">{s.serial}</span>
+                                {s.isReimport && (
+                                  <span className="flex items-center gap-1 text-[8px] font-black bg-orange-600 text-white px-1.5 py-0.5 rounded uppercase">
+                                    <RefreshCcw size={8}/> Tái nhập
+                                  </span>
+                                )}
                               </div>
                               <div className="flex items-center gap-4">
                                 <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-[10px] font-black">KHO: {s.wh}</span>
@@ -237,11 +254,6 @@ export const Inbound: React.FC = () => {
                               </div>
                            </div>
                          ))}
-                         {recentScans.length === 0 && (
-                           <div className="text-center py-12 text-slate-300 italic text-sm border-2 border-dashed rounded-2xl">
-                             Hệ thống sẵn sàng. Vui lòng quét mã để nhập kho...
-                           </div>
-                         )}
                       </div>
                   </div>
                </>
@@ -268,19 +280,24 @@ export const Inbound: React.FC = () => {
              </div>
              <div className="space-y-4">
                 {historyData.map(tx => (
-                  <div key={tx.id} className="border border-slate-100 rounded-2xl overflow-hidden hover:border-green-300 transition-all">
+                  <div key={tx.id} className={`border rounded-2xl overflow-hidden hover:shadow-md transition-all ${tx.isReimportTx ? 'border-orange-200' : 'border-slate-100'}`}>
                      <div className="bg-slate-50 p-4 flex justify-between items-center cursor-pointer" onClick={() => setExpandedTx(expandedTx === tx.id ? null : tx.id)}>
                         <div className="flex items-center gap-4">
-                          <div className="p-3 rounded-xl bg-green-100 text-green-600"><Calendar size={20} /></div>
+                          <div className={`p-3 rounded-xl ${tx.isReimportTx ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
+                            {tx.isReimportTx ? <RefreshCcw size={20} /> : <Calendar size={20} />}
+                          </div>
                           <div>
-                            <div className="font-black text-slate-800">{new Date(tx.date).toLocaleString('vi-VN')}</div>
+                            <div className="font-black text-slate-800">
+                              {new Date(tx.date).toLocaleString('vi-VN')}
+                              {tx.isReimportTx && <span className="ml-2 text-[10px] bg-orange-600 text-white px-2 py-0.5 rounded uppercase">Lô Tái Nhập</span>}
+                            </div>
                             <div className="text-xs text-slate-500 font-bold mt-1 uppercase tracking-tighter">
                               {inventoryService.getProductById(tx.productId)?.model} <span className="text-slate-300 mx-1">|</span> Kho: {tx.toLocation}
                             </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
-                          <div className="text-right font-black text-xl text-green-600">+{tx.quantity}</div>
+                          <div className={`text-right font-black text-xl ${tx.isReimportTx ? 'text-orange-600' : 'text-green-600'}`}>+{tx.quantity}</div>
                           {expandedTx === tx.id ? <ChevronUp /> : <ChevronDown />}
                         </div>
                      </div>

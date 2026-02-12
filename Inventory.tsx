@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { inventoryService } from './inventoryService';
 import { exportExcelReport } from './reportService';
 import { UnitStatus } from './types';
-import { FileSpreadsheet, Warehouse as WarehouseIcon, Package, Info, CheckCircle, BarChart3, ChevronRight, Hash } from 'lucide-react';
+import { FileSpreadsheet, Warehouse as WarehouseIcon, Package, Info, CheckCircle, BarChart3, ChevronRight, Hash, RefreshCcw } from 'lucide-react';
 
 export const Inventory: React.FC = () => {
   const warehouses = inventoryService.getWarehouses();
@@ -12,12 +12,10 @@ export const Inventory: React.FC = () => {
 
   const [selectedWhName, setSelectedWhName] = useState<string>('');
 
-  // Lấy thông tin kho đang được chọn
   const currentWarehouse = useMemo(() => 
     warehouses.find(w => w.name === selectedWhName),
   [selectedWhName, warehouses]);
 
-  // Tính toán dữ liệu tồn kho dựa trên kho được chọn
   const inventoryData = useMemo(() => {
     if (!selectedWhName) return [];
 
@@ -33,12 +31,11 @@ export const Inventory: React.FC = () => {
         total: productUnitsInWh.length,
         new: inStockUnits.length,
         sold: productUnitsInWh.filter(u => u.status === UnitStatus.SOLD).length,
-        imeiList: inStockUnits.map(u => u.serialNumber) // Lấy danh sách IMEI đang tồn
+        imeis: inStockUnits.map(u => ({ serial: u.serialNumber, isReimported: u.isReimported }))
       };
-    }).filter(item => item.total > 0); // Chỉ hiện các model có hàng trong kho này
+    }).filter(item => item.total > 0);
   }, [selectedWhName, products, allUnits]);
 
-  // Tính toán thông số tổng quan của kho
   const whStats = useMemo(() => {
     if (!selectedWhName) return null;
     const inWh = allUnits.filter(u => u.warehouseLocation === selectedWhName && u.status === UnitStatus.NEW).length;
@@ -64,7 +61,6 @@ export const Inventory: React.FC = () => {
         </div>
       </div>
 
-      {/* Bộ lọc chọn kho */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row items-center gap-6">
         <div className="flex items-center gap-3 min-w-[200px]">
             <div className="bg-blue-100 p-2 rounded-lg text-blue-600">
@@ -121,15 +117,9 @@ export const Inventory: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-6 animate-fade-in">
-            <h3 className="font-bold text-slate-700 flex items-center gap-2 ml-1">
-                <Package size={20} className="text-blue-500"/>
-                Danh mục hàng hóa tại {selectedWhName}
-            </h3>
-            
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {inventoryData.map(item => (
                     <div key={item.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:border-blue-200 transition-all flex flex-col gap-6 group">
-                        {/* Header của thẻ sản phẩm */}
                         <div className="flex justify-between items-start">
                             <div className="flex items-center gap-3">
                                 <div className="bg-slate-50 p-3 rounded-xl text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors">
@@ -145,7 +135,6 @@ export const Inventory: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Các con số thống kê nhanh */}
                         <div className="grid grid-cols-3 gap-4">
                             <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                                 <span className="text-[9px] font-black text-slate-400 uppercase block mb-1">Hàng Mới</span>
@@ -161,17 +150,21 @@ export const Inventory: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* PHẦN MỚI: Danh sách IMEI chi tiết */}
                         <div className="space-y-3">
                             <div className="flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 pb-2">
                                 <Hash size={14} /> Danh sách IMEI đang tại kho
                             </div>
                             <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 max-h-40 overflow-y-auto custom-scrollbar">
-                                {item.imeiList.length > 0 ? (
+                                {item.imeis.length > 0 ? (
                                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                        {item.imeiList.map(imei => (
-                                            <div key={imei} className="bg-white border border-slate-200 px-2 py-1.5 rounded-lg text-center font-mono text-[10px] font-bold text-slate-600 shadow-sm hover:border-blue-300 hover:text-blue-600 transition-all">
-                                                {imei}
+                                        {item.imeis.map(u => (
+                                            <div key={u.serial} className={`relative bg-white border px-2 py-1.5 rounded-lg text-center font-mono text-[10px] font-bold shadow-sm transition-all ${u.isReimported ? 'border-orange-300 text-orange-700' : 'border-slate-200 text-slate-600'}`}>
+                                                {u.serial}
+                                                {u.isReimported && (
+                                                  <div className="absolute -top-1 -right-1 bg-orange-600 text-white rounded-full p-0.5 shadow-sm">
+                                                    <RefreshCcw size={8}/>
+                                                  </div>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
@@ -184,13 +177,6 @@ export const Inventory: React.FC = () => {
                         </div>
                     </div>
                 ))}
-
-                {inventoryData.length === 0 && (
-                    <div className="col-span-full bg-slate-50 p-12 rounded-2xl border border-dashed text-center flex flex-col items-center">
-                        <Info size={32} className="text-slate-300 mb-2" />
-                        <p className="text-slate-500 italic font-medium">Kho này hiện không có bất kỳ sản phẩm nào.</p>
-                    </div>
-                )}
             </div>
         </div>
       )}

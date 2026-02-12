@@ -121,6 +121,7 @@ class InventoryService {
 
     const finalAssignments: { location: string, serials: string[] }[] = [];
 
+    // Phân bổ vào kho
     while (remainingSerials.length > 0 && whIdx < allWhs.length) {
       const currentWh = allWhs[whIdx];
       const currentStock = this.getWarehouseCurrentStock(currentWh.name);
@@ -144,13 +145,43 @@ class InventoryService {
     const updatedUnits = [...this.units];
     finalAssignments.forEach(assign => {
       let isReimportTx = false;
+      const currentBatchSerials: string[] = [];
+
       assign.serials.forEach(s => {
         const idx = updatedUnits.findIndex(u => u.serialNumber === s);
         if (idx !== -1) {
-          updatedUnits[idx] = { ...updatedUnits[idx], status: UnitStatus.NEW, warehouseLocation: assign.location, importDate: new Date().toISOString(), isReimported: true };
-          isReimportTx = true;
+          const existingUnit = updatedUnits[idx];
+          
+          // KIỂM TRA ĐIỀU KIỆN TÁI NHẬP: 
+          // 1. Phải đang ở trạng thái SOLD
+          // 2. Chưa từng được tái nhập trước đó (isReimported phải là false/undefined)
+          if (existingUnit.status === UnitStatus.SOLD) {
+             if (existingUnit.isReimported) {
+                throw new Error(`Mã ${s} đã từng được tái nhập 1 lần rồi, không thể nhập lại lần thứ 2.`);
+             }
+             
+             updatedUnits[idx] = { 
+               ...existingUnit, 
+               status: UnitStatus.NEW, 
+               warehouseLocation: assign.location, 
+               importDate: new Date().toISOString(), 
+               isReimported: true // Đánh dấu đã tái nhập
+             };
+             isReimportTx = true;
+          } else {
+             // Nếu máy đang ở trạng thái NEW hoặc khác, thông báo lỗi (thường UI đã chặn)
+             throw new Error(`Mã ${s} hiện đang tồn kho, không cần nhập lại.`);
+          }
         } else {
-          updatedUnits.push({ serialNumber: s, productId, status: UnitStatus.NEW, warehouseLocation: assign.location, importDate: new Date().toISOString(), isReimported: false });
+          // Nhập mới hoàn toàn
+          updatedUnits.push({ 
+            serialNumber: s, 
+            productId, 
+            status: UnitStatus.NEW, 
+            warehouseLocation: assign.location, 
+            importDate: new Date().toISOString(), 
+            isReimported: false 
+          });
         }
       });
 
@@ -172,10 +203,8 @@ class InventoryService {
   }
 
   transferUnits(productId: string, serials: string[], toLoc: string) {
-    // Get original locations for the record (simplified to the first unit's loc for transaction record)
     const firstUnit = this.units.find(u => u.serialNumber === serials[0]);
     const fromLoc = firstUnit?.warehouseLocation;
-
     this.units = this.units.map(u => serials.includes(u.serialNumber) ? { ...u, warehouseLocation: toLoc } : u);
     this.transactions = [{ 
       id: `tx-tr-${Date.now()}`, 

@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { inventoryService } from './inventoryService';
 import { exportPlanDetail } from './reportService';
@@ -45,10 +46,13 @@ export const ProductionCheck: React.FC = () => {
 
   const handleSavePlan = () => {
     if (!formName || !formProductId || scannedList.length === 0) return;
-    const uniqueSerials = Array.from(new Set(scannedList));
+    // Fix: Explicitly type uniqueSerials as string[] to resolve 'unknown[]' inference error on line 50 and 52
+    const uniqueSerials: string[] = Array.from(new Set(scannedList));
     if (viewMode === 'EDIT' && selectedPlan) {
+      // Fix: Passed correctly typed string[] to updateProductionPlan (Line 50)
       inventoryService.updateProductionPlan(selectedPlan.id, formName, formProductId, uniqueSerials);
     } else {
+      // Fix: Passed correctly typed string[] to addProductionPlan (Line 52)
       inventoryService.addProductionPlan(formName, formProductId, uniqueSerials);
     }
     setViewMode('LIST');

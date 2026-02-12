@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { inventoryService } from './inventoryService';
 import { exportTransactionHistory } from './reportService';
-import { Upload, CheckCircle, XCircle, Search, ArrowRightLeft, Store, Warehouse, ArrowRight, History, Plus, Calendar, ChevronDown, ChevronUp, FileSpreadsheet, MapPin, Trash2, Info, Zap, AlertTriangle, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Upload, CheckCircle, XCircle, Search, ArrowRightLeft, Store, Warehouse, ArrowRight, History, Plus, Calendar, ChevronDown, ChevronUp, FileSpreadsheet, MapPin, Trash2, Info, Zap, AlertTriangle, ToggleLeft, ToggleRight, Database } from 'lucide-react';
 import { playSound } from './sound';
 import { Transaction, UnitStatus } from './types';
 
@@ -21,7 +21,7 @@ export const Outbound: React.FC = () => {
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [targetId, setTargetId] = useState<string>(''); 
   const [sourceWarehouse, setSourceWarehouse] = useState(warehouses.length > 0 ? warehouses[0].name : '');
-  const [autoDetect, setAutoDetect] = useState(true); // Quyền chọn tự động nhận diện kho
+  const [autoDetect, setAutoDetect] = useState(true); 
   
   const [currentSerial, setCurrentSerial] = useState('');
   const [recentScans, setRecentScans] = useState<{serial: string, time: string, fromWh: string, to: string}[]>([]);
@@ -83,7 +83,6 @@ export const Outbound: React.FC = () => {
     let exportWhName = sourceWarehouse;
     let warningMsg = '';
 
-    // KIỂM TRA QUYỀN CHỌN KHO
     if (autoDetect) {
        if (actualLoc !== sourceWarehouse) {
           setSourceWarehouse(actualLoc);
@@ -91,7 +90,6 @@ export const Outbound: React.FC = () => {
           warningMsg = `Tự động nhận diện: Máy nằm tại ${actualLoc}.`;
        }
     } else {
-       // Chế độ thủ công: Chỉ cho xuất nếu đúng kho đã chọn
        if (actualLoc !== sourceWarehouse) {
           playSound('error');
           setMessage({ type: 'error', text: `LỖI: Máy này nằm ở ${actualLoc}, không phải ${sourceWarehouse}!` });
@@ -139,9 +137,14 @@ export const Outbound: React.FC = () => {
              <div className="bg-blue-600 p-3 rounded-full text-white shadow-lg shadow-blue-100"><Zap /></div>
              <div><h2 className="text-xl font-bold">Xuất Kho Tức Thì</h2><p className="text-slate-500 text-sm">Kiểm soát kho xuất đi theo ý muốn của bạn.</p></div>
          </div>
-         <div className="flex bg-slate-100 p-1 rounded-lg">
-             <button onClick={() => setActiveTab('SCAN')} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'SCAN' ? 'bg-white shadow text-blue-700' : 'text-slate-500'}`}>Quét Xuất</button>
-             <button onClick={() => setActiveTab('HISTORY')} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'HISTORY' ? 'bg-white shadow text-blue-700' : 'text-slate-500'}`}>Lịch sử</button>
+         <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1 text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-full border border-blue-100 animate-pulse">
+               <Database size={12}/> Live Sync
+            </div>
+            <div className="flex bg-slate-100 p-1 rounded-lg">
+                <button onClick={() => setActiveTab('SCAN')} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'SCAN' ? 'bg-white shadow text-blue-700' : 'text-slate-500'}`}>Quét Xuất</button>
+                <button onClick={() => setActiveTab('HISTORY')} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'HISTORY' ? 'bg-white shadow text-blue-700' : 'text-slate-500'}`}>Lịch sử</button>
+            </div>
          </div>
       </div>
 
@@ -194,14 +197,7 @@ export const Outbound: React.FC = () => {
                   <Zap size={12}/> Quét IMEI (Xử lý tức thì)
                 </label>
                 <form onSubmit={handleAutoExport}>
-                   <input 
-                      ref={inputRef} 
-                      type="text" 
-                      placeholder="Quét mã vạch xuất..." 
-                      className="w-full p-4 border-2 border-blue-100 rounded-2xl font-mono text-2xl shadow-sm outline-none focus:border-blue-500 transition-all bg-blue-50/30" 
-                      value={currentSerial} 
-                      onChange={(e) => setCurrentSerial(e.target.value)} 
-                   />
+                   <input ref={inputRef} type="text" placeholder="Quét mã vạch xuất..." className="w-full p-4 border-2 border-blue-100 rounded-2xl font-mono text-2xl shadow-sm outline-none focus:border-blue-500 transition-all bg-blue-50/30" value={currentSerial} onChange={(e) => setCurrentSerial(e.target.value)} />
                 </form>
                 <p className="text-[10px] text-slate-400 mt-2 italic">* {autoDetect ? 'Hệ thống sẽ tự nhận diện máy nằm ở đâu.' : 'Chỉ cho xuất máy nằm trong kho đã chọn.'}</p>
             </div>
@@ -224,11 +220,7 @@ export const Outbound: React.FC = () => {
                       const isSelected = sourceWarehouse === wh.name;
 
                       return (
-                        <div 
-                          key={wh.id}
-                          className={`relative p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 cursor-pointer ${isSelected ? 'border-blue-500 bg-white shadow-lg scale-105 z-10' : 'border-slate-200 bg-slate-50 opacity-60'}`}
-                          onClick={() => setSourceWarehouse(wh.name)}
-                        >
+                        <div key={wh.id} className={`relative p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 cursor-pointer ${isSelected ? 'border-blue-500 bg-white shadow-lg scale-105 z-10' : 'border-slate-200 bg-slate-50 opacity-60'}`} onClick={() => setSourceWarehouse(wh.name)}>
                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isEmpty ? 'bg-slate-200 text-slate-400' : 'bg-blue-100 text-blue-600'} ${isSelected ? 'bg-blue-600 text-white' : ''}`}>
                             <Warehouse size={20} />
                           </div>
@@ -251,9 +243,7 @@ export const Outbound: React.FC = () => {
                  {recentScans.map((s, idx) => (
                    <div key={idx} className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100 shadow-sm animate-slide-in">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-[10px] font-bold border border-blue-100">
-                          {recentScans.length - idx}
-                        </div>
+                        <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-[10px] font-bold border border-blue-100">{recentScans.length - idx}</div>
                         <span className="font-mono font-black text-slate-700">{s.serial}</span>
                       </div>
                       <div className="flex items-center gap-4">
@@ -271,7 +261,6 @@ export const Outbound: React.FC = () => {
 
       {activeTab === 'HISTORY' && (
          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 space-y-6 animate-fade-in">
-             {/* Giữ nguyên phần lịch sử như phiên bản trước */}
              <div className="flex flex-col md:flex-row justify-between items-end gap-4 border-b pb-6">
                 <div className="flex gap-4 w-full md:w-auto">
                    <div className="flex-1">
@@ -283,52 +272,35 @@ export const Outbound: React.FC = () => {
                       <input type="date" className="w-full p-2 border rounded-lg outline-none bg-slate-50" value={historyTo} onChange={e => setHistoryTo(e.target.value)} />
                    </div>
                 </div>
-                <button onClick={() => exportTransactionHistory(historyData, 'Lich_su_Xuat')} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 text-sm hover:bg-blue-700 shadow-lg shadow-blue-100">
+                <button onClick={() => exportTransactionHistory(historyData, 'Lich_su_Xuat')} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 text-sm shadow-lg shadow-blue-100">
                    <FileSpreadsheet size={18}/> Xuất Báo cáo Excel
                 </button>
              </div>
              <div className="space-y-4">
-                {historyData.map(tx => {
-                   const product = inventoryService.getProductById(tx.productId);
-                   const isExpanded = expandedTx === tx.id;
-                   const isSale = tx.type === 'OUTBOUND';
-                   return (
-                      <div key={tx.id} className={`border rounded-2xl overflow-hidden transition-all hover:shadow-md ${isSale ? 'border-blue-100' : 'border-orange-100'}`}>
-                         <div className="bg-slate-50 p-4 flex justify-between items-center cursor-pointer" onClick={() => setExpandedTx(isExpanded ? null : tx.id)}>
-                            <div className="flex items-center gap-4">
-                                <div className={`p-3 rounded-xl ${isSale ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>
-                                    {isSale ? <Store size={20} /> : <ArrowRightLeft size={20} />}
-                                </div>
-                                <div className="space-y-1">
-                                    <div className="font-black text-slate-800">{new Date(tx.date).toLocaleString('vi-VN')}</div>
-                                    <div className="flex items-center gap-2 text-[10px] font-black uppercase">
-                                        <span className="text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">{product?.model}</span>
-                                        <ArrowRight size={10} className="text-slate-300" />
-                                        <span className="flex items-center gap-1 text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                                            <Warehouse size={10} /> {tx.fromLocation || 'N/A'}
-                                        </span>
-                                        <ArrowRight size={10} className="text-slate-300" />
-                                        <span className={`px-1.5 py-0.5 rounded border ${isSale ? 'text-orange-600 bg-orange-50 border-orange-100' : 'text-slate-700 bg-slate-100 border-slate-200'}`}>
-                                            {isSale ? `KHACH: ${tx.customer}` : `KHO: ${tx.toLocation}`}
-                                        </span>
-                                    </div>
-                                </div>
+                {historyData.map(tx => (
+                  <div key={tx.id} className="border border-slate-100 rounded-2xl overflow-hidden hover:shadow-md transition-all">
+                     <div className="bg-slate-50 p-4 flex justify-between items-center cursor-pointer" onClick={() => setExpandedTx(expandedTx === tx.id ? null : tx.id)}>
+                        <div className="flex items-center gap-4">
+                            <div className={`p-3 rounded-xl ${tx.type === 'OUTBOUND' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>
+                                {tx.type === 'OUTBOUND' ? <Store size={20} /> : <ArrowRightLeft size={20} />}
                             </div>
-                            <div className="flex items-center gap-4">
-                                <div className="text-right font-black text-xl text-blue-600">-{tx.quantity}</div>
-                                {isExpanded ? <ChevronUp /> : <ChevronDown />}
+                            <div className="space-y-1">
+                                <div className="font-black text-slate-800">{new Date(tx.date).toLocaleString('vi-VN')}</div>
+                                <div className="text-[10px] font-black uppercase text-slate-500">Model: {inventoryService.getProductById(tx.productId)?.model} • Từ: {tx.fromLocation}</div>
                             </div>
-                         </div>
-                         {isExpanded && (
-                            <div className="p-6 bg-white border-t border-slate-50 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                               {tx.serialNumbers.map(sn => (
-                                 <div key={sn} className="font-mono text-[10px] p-2 bg-slate-50 rounded-lg text-center border font-bold text-slate-600">{sn}</div>
-                               ))}
-                            </div>
-                         )}
-                      </div>
-                   )
-                })}
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <div className="text-right font-black text-xl text-blue-600">-{tx.quantity}</div>
+                            {expandedTx === tx.id ? <ChevronUp /> : <ChevronDown />}
+                        </div>
+                     </div>
+                     {expandedTx === tx.id && (
+                        <div className="p-6 bg-white border-t border-slate-50 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                           {tx.serialNumbers.map(sn => (<div key={sn} className="font-mono text-[10px] p-2 bg-slate-50 rounded-lg text-center border font-bold text-slate-600">{sn}</div>))}
+                        </div>
+                     )}
+                  </div>
+                ))}
              </div>
          </div>
       )}

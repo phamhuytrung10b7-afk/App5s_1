@@ -27,6 +27,7 @@ export const ProductionCheck: React.FC = () => {
   const [formProductId, setFormProductId] = useState('');
   const [scannedList, setScannedList] = useState<string[]>([]);
   const [currentInput, setCurrentInput] = useState('');
+  const [scanError, setScanError] = useState<string | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
 
@@ -43,6 +44,13 @@ export const ProductionCheck: React.FC = () => {
       inputRef.current.focus();
     }
   }, [viewMode, scannedList, editingIndex]);
+
+  useEffect(() => {
+    if (scanError) {
+      const timer = setTimeout(() => setScanError(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [scanError]);
 
   const handleSavePlan = () => {
     if (!formName || !formProductId || scannedList.length === 0) return;
@@ -148,18 +156,36 @@ export const ProductionCheck: React.FC = () => {
                     <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wider mb-4">2. Quét / Nhập mã</h3>
                     <form onSubmit={e => { 
                       e.preventDefault(); 
-                      if (currentInput.trim()) { 
-                        if (scannedList.includes(currentInput.trim())) {
+                      const val = currentInput.trim();
+                      if (val) { 
+                        if (scannedList.includes(val)) {
                           playSound('warning');
-                        } else {
-                          setScannedList([currentInput.trim(), ...scannedList]); 
+                          setScanError(`Mã "${val}" đã có trong danh sách!`);
                           setCurrentInput(''); 
+                        } else {
+                          setScannedList([val, ...scannedList]); 
+                          setCurrentInput(''); 
+                          setScanError(null);
                           playSound('success'); 
                         }
                       } 
                     }} className="relative mb-4">
                          <Search className="absolute left-3 top-3.5 text-slate-400" size={18} />
-                         <input ref={inputRef} className="w-full pl-10 p-3 border rounded-lg font-mono outline-none focus:ring-2 focus:ring-water-500" placeholder="Quét Serial máy..." value={currentInput} onChange={e => setCurrentInput(e.target.value)} />
+                         <input 
+                           ref={inputRef} 
+                           className={`w-full pl-10 p-3 border rounded-lg font-mono outline-none focus:ring-2 transition-all ${scanError ? 'border-red-500 focus:ring-red-500 bg-red-50' : 'focus:ring-water-500'}`} 
+                           placeholder="Quét Serial máy..." 
+                           value={currentInput} 
+                           onChange={e => {
+                             setCurrentInput(e.target.value);
+                             if (scanError) setScanError(null);
+                           }} 
+                         />
+                         {scanError && (
+                           <div className="absolute -bottom-6 left-0 text-[10px] font-bold text-red-500 flex items-center gap-1 animate-pulse">
+                             <AlertTriangle size={10} /> {scanError}
+                           </div>
+                         )}
                     </form>
                     
                     <div className="flex-1 overflow-y-auto bg-slate-50 rounded-lg p-2 mb-4 space-y-1 custom-scrollbar">

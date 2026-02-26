@@ -2,9 +2,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { inventoryService } from './inventoryService';
 import { exportTransactionHistory } from './reportService';
-import { Scan, Plus, Trash2, CheckCircle, Warehouse, AlertTriangle, XCircle, ArrowRight, History, ChevronDown, ChevronUp, Calendar, Box, FileSpreadsheet, RefreshCw, Info, Zap, RefreshCcw, ToggleLeft, ToggleRight, Database } from 'lucide-react';
+import { Scan, Plus, Trash2, CheckCircle, Warehouse, AlertTriangle, XCircle, ArrowRight, History, ChevronDown, ChevronUp, Calendar, Box, FileSpreadsheet, RefreshCw, Info, Zap, RefreshCcw, ToggleLeft, ToggleRight, Database, Upload } from 'lucide-react';
 import { playSound } from './sound';
 import { ProductionPlan, UnitStatus, Transaction } from './types';
+import { read, utils } from 'xlsx';
 
 export const Inbound: React.FC = () => {
   const warehouses = inventoryService.getWarehouses();
@@ -19,11 +20,15 @@ export const Inbound: React.FC = () => {
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
   const [location, setLocation] = useState(warehouses.length > 0 ? warehouses[0].name : '');
   const [autoJump, setAutoJump] = useState(true);
+  const [batchMode, setBatchMode] = useState(false);
+  const [pendingList, setPendingList] = useState<string[]>([]);
   
   const [currentSerial, setCurrentSerial] = useState('');
   const [recentScans, setRecentScans] = useState<{serial: string, time: string, wh: string, isReimport?: boolean}[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState<{type: 'success' | 'error' | 'warning', text: string} | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     if (activeTab === 'HISTORY') {
@@ -33,29 +38,39 @@ export const Inbound: React.FC = () => {
   }, [activeTab, historyFrom, historyTo]);
 
   useEffect(() => {
-    if (activeTab === 'SCAN') inputRef.current?.focus();
-  }, [recentScans, message, selectedPlanId, activeTab, location, autoJump]);
+    if (activeTab === 'SCAN') {
+      inputRef.current?.focus();
+      // Load draft if in batch mode
+      if (batchMode) {
+        const drafts = inventoryService.getDrafts();
+        if (drafts.inbound && drafts.inbound.length > 0 && pendingList.length === 0) {
+          setPendingList(drafts.inbound);
+        }
+      }
+    }
+  }, [recentScans, message, selectedPlanId, activeTab, location, autoJump, batchMode]);
 
-  const handleAutoImport = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const scannedCode = currentSerial.trim();
-    if (!scannedCode) return;
+  useEffect(() => {
+    if (batchMode) {
+      inventoryService.saveDraft('inbound', pendingList);
+    }
+  }, [pendingList, batchMode]);
 
+  const processInboundSerial = (scannedCode: string, currentWhName: string): { success: boolean, targetWh: string, isReimport: boolean } | null => {
     const selectedPlan = plans.find(p => p.id === selectedPlanId);
     const selectedProduct = selectedPlan ? inventoryService.getProductById(selectedPlan.productId) : null;
 
     if (!selectedPlan || !selectedProduct) { 
       playSound('error'); 
       setMessage({ type: 'error', text: 'Vui lòng chọn Kế hoạch sản xuất trước!' }); 
-      return; 
+      return null; 
     }
 
     // 1. Kiểm tra mã có trong kế hoạch không
     if (!selectedPlan.serials.includes(scannedCode)) { 
       playSound('error'); 
       setMessage({ type: 'error', text: `Mã ${scannedCode} KHÔNG thuộc kế hoạch này!` }); 
-      setCurrentSerial('');
-      return; 
+      return null; 
     }
 
     // 2. Kiểm tra tồn kho / tái nhập
@@ -66,22 +81,20 @@ export const Inbound: React.FC = () => {
       if (unit.status === UnitStatus.NEW) {
         playSound('error');
         setMessage({ type: 'error', text: `Lỗi: Mã ${scannedCode} đã có sẵn trong kho ${unit.warehouseLocation}!` });
-        setCurrentSerial('');
-        return;
+        return null;
       }
       if (unit.status === UnitStatus.SOLD) {
         if (unit.isReimported) {
           playSound('error');
           setMessage({ type: 'error', text: `Lỗi: Mã ${scannedCode} đã từng tái nhập rồi.` });
-          setCurrentSerial('');
-          return;
+          return null;
         }
         isReimportCandidate = true;
       }
     }
 
     // 3. Kiểm tra sức chứa kho
-    let targetWhName = location;
+    let targetWhName = currentWhName;
     const currentStock = inventoryService.getWarehouseCurrentStock(targetWhName);
     const capacity = warehouses.find(w => w.name === targetWhName)?.maxCapacity || 9999;
 
@@ -95,38 +108,208 @@ export const Inbound: React.FC = () => {
         } else {
           playSound('error');
           setMessage({ type: 'error', text: 'Tất cả các kho đã đầy!' });
-          return;
+          return null;
         }
       } else {
         playSound('error');
         setMessage({ type: 'error', text: 'Kho đã đầy sức chứa!' });
-        return;
+        return null;
       }
     }
 
     // 4. Thực thi nhập kho ngay lập tức
     try {
       inventoryService.importUnits(selectedProduct.id, [scannedCode], targetWhName, selectedPlan.name);
-      playSound(isReimportCandidate ? 'warning' : 'success');
+      return { success: true, targetWh: targetWhName, isReimport: isReimportCandidate };
+    } catch (err: any) {
+      playSound('error');
+      setMessage({ type: 'error', text: err.message });
+      return null;
+    }
+  };
+
+  const handleAutoImport = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const scannedCode = currentSerial.trim();
+    if (!scannedCode) return;
+
+    if (batchMode) {
+      if (pendingList.includes(scannedCode)) {
+        playSound('warning');
+        setMessage({ type: 'warning', text: `Mã ${scannedCode} đã có trong danh sách chờ!` });
+      } else {
+        setPendingList(prev => [scannedCode, ...prev]);
+        playSound('success');
+      }
+      setCurrentSerial('');
+      return;
+    }
+
+    const result = processInboundSerial(scannedCode, location);
+    
+    if (result && result.success) {
+      playSound(result.isReimport ? 'warning' : 'success');
       
       const newScan = { 
         serial: scannedCode, 
         time: new Date().toLocaleTimeString('vi-VN'), 
-        wh: targetWhName,
-        isReimport: isReimportCandidate
+        wh: result.targetWh,
+        isReimport: result.isReimport
       };
       
-      setRecentScans([newScan, ...recentScans.slice(0, 19)]);
+      setRecentScans(prev => [newScan, ...prev.slice(0, 19)]);
       setMessage({ 
-        type: isReimportCandidate ? 'warning' : 'success', 
-        text: isReimportCandidate ? `TÁI NHẬP: ${scannedCode}` : `Thành công: ${scannedCode}` 
+        type: result.isReimport ? 'warning' : 'success', 
+        text: result.isReimport ? `TÁI NHẬP: ${scannedCode}` : `Thành công: ${scannedCode}` 
       });
-    } catch (err: any) {
-      playSound('error');
-      setMessage({ type: 'error', text: err.message });
     }
 
     setCurrentSerial('');
+  };
+
+  const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!selectedPlanId) {
+      playSound('error');
+      setMessage({ type: 'error', text: 'Vui lòng chọn Kế hoạch sản xuất trước khi import!' });
+      e.target.value = '';
+      return;
+    }
+
+    if (batchMode) {
+      try {
+        const data = await file.arrayBuffer();
+        const workbook = read(data);
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+        const newSerials: string[] = [];
+        jsonData.forEach(row => {
+          if (row[0]) {
+            const serial = String(row[0]).trim();
+            if (serial && serial !== 'Serial' && serial !== 'IMEI' && !pendingList.includes(serial)) {
+              newSerials.push(serial);
+            }
+          }
+        });
+        setPendingList(prev => [...newSerials, ...prev]);
+        playSound('success');
+        setMessage({ type: 'success', text: `Đã thêm ${newSerials.length} mã vào danh sách chờ.` });
+      } catch (err) {
+        playSound('error');
+        setMessage({ type: 'error', text: 'Lỗi khi đọc file Excel!' });
+      }
+      e.target.value = '';
+      return;
+    }
+
+    setIsProcessing(true);
+    setMessage({ type: 'warning', text: 'Đang xử lý file Excel...' });
+
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = read(data);
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+      
+      const serialsToProcess: string[] = [];
+      jsonData.forEach(row => {
+        if (row[0]) {
+          const serial = String(row[0]).trim();
+          if (serial && serial !== 'Serial' && serial !== 'IMEI') {
+            serialsToProcess.push(serial);
+          }
+        }
+      });
+
+      if (serialsToProcess.length === 0) {
+        setMessage({ type: 'error', text: 'Không tìm thấy mã Serial nào trong file!' });
+        setIsProcessing(false);
+        e.target.value = '';
+        return;
+      }
+
+      let successCount = 0;
+      let errorCount = 0;
+      const newRecentScans: any[] = [];
+
+      // Process one by one to handle auto-jump and constraints
+      for (const serial of serialsToProcess) {
+        // We need to get the LATEST location because it might have changed due to auto-jump in previous iteration
+        // However, state updates are async. In a loop, we should manage the location manually or use a ref.
+        // For simplicity, we'll use the current location state, but it might not be perfect for massive imports with auto-jump.
+        // Actually, processInboundSerial updates the location state via setLocation.
+        
+        const result = processInboundSerial(serial, location);
+        if (result && result.success) {
+          successCount++;
+          newRecentScans.push({
+            serial,
+            time: new Date().toLocaleTimeString('vi-VN'),
+            wh: result.targetWh,
+            isReimport: result.isReimport
+          });
+        } else {
+          errorCount++;
+        }
+      }
+
+      setRecentScans(prev => [...newRecentScans.reverse(), ...prev].slice(0, 50));
+      setMessage({ 
+        type: errorCount === 0 ? 'success' : 'warning', 
+        text: `Import hoàn tất: Thành công ${successCount}, Thất bại ${errorCount}` 
+      });
+      
+      if (successCount > 0) playSound('success');
+      else playSound('error');
+
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: 'Lỗi khi đọc file Excel!' });
+      playSound('error');
+    } finally {
+      setIsProcessing(false);
+      e.target.value = '';
+    }
+  };
+
+  const commitBatch = () => {
+    if (pendingList.length === 0) return;
+    setIsProcessing(true);
+    let successCount = 0;
+    let errorCount = 0;
+    const newRecentScans: any[] = [];
+
+    // Process from bottom to top (oldest first)
+    const toProcess = [...pendingList].reverse();
+    
+    for (const serial of toProcess) {
+      const result = processInboundSerial(serial, location);
+      if (result && result.success) {
+        successCount++;
+        newRecentScans.push({
+          serial,
+          time: new Date().toLocaleTimeString('vi-VN'),
+          wh: result.targetWh,
+          isReimport: result.isReimport
+        });
+      } else {
+        errorCount++;
+      }
+    }
+
+    setRecentScans(prev => [...newRecentScans.reverse(), ...prev].slice(0, 50));
+    setPendingList([]);
+    inventoryService.clearDraft('inbound');
+    setIsProcessing(false);
+    
+    setMessage({ 
+      type: errorCount === 0 ? 'success' : 'warning', 
+      text: `Hoàn tất: Thành công ${successCount}, Thất bại ${errorCount}` 
+    });
+    if (successCount > 0) playSound('success');
+    else playSound('error');
   };
 
   return (
@@ -152,7 +335,12 @@ export const Inbound: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
               <div className="space-y-4">
                   <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
-                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Kế hoạch đang xử lý</label>
+                      <div className="flex justify-between items-center mb-3">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Kế hoạch đang xử lý</label>
+                        <button onClick={() => setBatchMode(!batchMode)} className={`flex items-center gap-1 text-[10px] font-black uppercase transition-all ${batchMode ? 'text-blue-600' : 'text-slate-400'}`}>
+                           {batchMode ? <ToggleRight size={18}/> : <ToggleLeft size={18}/>} Batch Mode
+                        </button>
+                      </div>
                       <select className="w-full p-3 border rounded-xl bg-white outline-none focus:ring-2 focus:ring-green-400 font-bold text-slate-800" value={selectedPlanId} onChange={(e) => setSelectedPlanId(e.target.value)}>
                          <option value="">-- Chọn Kế hoạch --</option>
                          {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -171,13 +359,52 @@ export const Inbound: React.FC = () => {
                   </div>
               </div>
 
-              <div className={`flex flex-col justify-center ${!selectedPlanId ? 'opacity-30 pointer-events-none' : ''}`}>
-                  <label className="block text-[10px] font-black text-green-600 uppercase tracking-widest mb-3 flex items-center gap-1">
-                    <Zap size={12}/> Quét IMEI (Xử lý tức thì)
-                  </label>
+              <div className={`flex flex-col justify-center ${!selectedPlanId || isProcessing ? 'opacity-30 pointer-events-none' : ''}`}>
+                  <div className="flex justify-between items-center mb-3">
+                    <label className="block text-[10px] font-black text-green-600 uppercase tracking-widest flex items-center gap-1">
+                      <Zap size={12}/> Quét IMEI (Xử lý tức thì)
+                    </label>
+                    <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="text-[10px] font-black text-blue-600 hover:text-blue-700 flex items-center gap-1 uppercase tracking-widest"
+                    >
+                      <Upload size={12}/> Import Excel
+                    </button>
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      className="hidden" 
+                      accept=".xlsx, .xls" 
+                      onChange={handleExcelImport}
+                    />
+                  </div>
                   <form onSubmit={handleAutoImport}>
-                     <input ref={inputRef} type="text" placeholder="Quét mã vạch..." className="w-full p-4 border-2 border-green-100 rounded-2xl font-mono text-2xl shadow-sm outline-none focus:border-green-500 transition-all bg-green-50/30" value={currentSerial} onChange={(e) => setCurrentSerial(e.target.value)} />
+                     <input ref={inputRef} type="text" placeholder={batchMode ? "Quét vào danh sách chờ..." : "Quét mã vạch..."} className="w-full p-4 border-2 border-green-100 rounded-2xl font-mono text-2xl shadow-sm outline-none focus:border-green-500 transition-all bg-green-50/30" value={currentSerial} onChange={(e) => setCurrentSerial(e.target.value)} />
                   </form>
+                  {batchMode && (
+                    <div className="mt-4 space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-slate-500">Danh sách chờ ({pendingList.length})</span>
+                        <button onClick={() => setPendingList([])} className="text-[10px] text-red-500 font-bold hover:underline">Xóa hết</button>
+                      </div>
+                      <div className="bg-slate-50 border rounded-xl p-2 max-h-40 overflow-y-auto custom-scrollbar space-y-1">
+                        {pendingList.map((s, i) => (
+                          <div key={i} className="flex justify-between items-center bg-white p-2 rounded border text-xs font-mono">
+                            <span>{s}</span>
+                            <button onClick={() => setPendingList(pendingList.filter((_, idx) => idx !== i))} className="text-slate-400 hover:text-red-500"><Trash2 size={12}/></button>
+                          </div>
+                        ))}
+                        {pendingList.length === 0 && <div className="text-center py-4 text-slate-400 text-[10px] italic">Trống</div>}
+                      </div>
+                      <button 
+                        onClick={commitBatch}
+                        disabled={pendingList.length === 0 || isProcessing}
+                        className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 disabled:bg-slate-200 flex items-center justify-center gap-2 shadow-lg shadow-blue-100"
+                      >
+                        <CheckCircle size={18}/> Xác nhận Nhập kho ({pendingList.length})
+                      </button>
+                    </div>
+                  )}
               </div>
             </div>
 

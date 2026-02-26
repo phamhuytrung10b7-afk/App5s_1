@@ -25,45 +25,25 @@ class InventoryService {
   }
 
   private loadFromStorage() {
-    const savedData = localStorage.getItem(STORAGE_KEY);
-    if (savedData) {
-      try {
-        const parsed = JSON.parse(savedData);
-        this.products = parsed.products || [];
-        this.units = parsed.units || [];
-        this.transactions = parsed.transactions || [];
-        this.warehouses = parsed.warehouses || [{ id: 'wh-default', name: 'Kho Tổng', maxCapacity: 1000 }];
-        this.customers = parsed.customers || [];
-        this.productionPlans = parsed.productionPlans || [];
-        this.salesOrders = parsed.salesOrders || [];
-      } catch (e) {
-        console.error("Storage error:", e);
-      }
-    } else {
-      this.warehouses = [{ id: 'wh-default', name: 'Kho Tổng', maxCapacity: 1000 }];
-    }
-
-    const savedDrafts = localStorage.getItem(DRAFT_KEY);
-    if (savedDrafts) {
-      try {
-        this.drafts = JSON.parse(savedDrafts);
-      } catch (e) {
-        this.drafts = { inbound: [], outbound: [], productionCheck: [] };
-      }
-    }
+    // Persistence disabled as requested
+    this.warehouses = [
+      { id: 'wh-1', name: 'Kho Tổng', maxCapacity: 1000 },
+      { id: 'wh-2', name: 'Kho Quận 1', maxCapacity: 500 },
+      { id: 'wh-3', name: 'Kho Thủ Đức', maxCapacity: 800 }
+    ];
+    this.products = [
+      { id: 'p-1', model: 'RO-2024-V1', brand: 'RO-Master', specs: '9 Lõi, Tủ kính cường lực' },
+      { id: 'p-2', model: 'RO-2024-V2', brand: 'RO-Master', specs: '10 Lõi, Hydrogen' },
+      { id: 'p-3', model: 'RO-ECO-01', brand: 'RO-Master', specs: '8 Lõi, Tiết kiệm điện' }
+    ];
+    this.customers = [
+      { id: 'c-1', name: 'Đại lý Minh Anh', type: 'DEALER', phone: '0901234567' },
+      { id: 'c-2', name: 'Cửa hàng Gia Dụng Việt', type: 'DEALER', phone: '0987654321' }
+    ];
   }
 
   private persist() {
-    const data = {
-      products: this.products,
-      units: this.units,
-      transactions: this.transactions,
-      warehouses: this.warehouses,
-      customers: this.customers,
-      productionPlans: this.productionPlans,
-      salesOrders: this.salesOrders,
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    // Persistence disabled as requested
   }
 
   // --- DRAFT MANAGEMENT ---
@@ -243,14 +223,52 @@ class InventoryService {
   checkSerialImported(s: string) { return this.units.some(u => u.serialNumber === s); }
 
   deleteUnit(serial: string) {
+    // Remove from units
     this.units = this.units.filter(u => u.serialNumber !== serial);
+    
+    // Remove from transactions and update quantities
+    this.transactions = this.transactions.map(t => {
+      const filteredSerials = t.serialNumbers.filter(s => s !== serial);
+      return {
+        ...t,
+        serialNumbers: filteredSerials,
+        quantity: filteredSerials.length
+      };
+    }).filter(t => t.quantity > 0);
+
+    // Remove from production plans
+    this.productionPlans = this.productionPlans.map(p => ({
+      ...p,
+      serials: p.serials.filter(s => s !== serial)
+    }));
+
+    // Remove from sales orders (if applicable)
+    // Note: Sales orders usually track counts, but if they tracked serials we'd update them here.
+    // Currently they track scannedCount in items.
+
     this.persist();
   }
 
   updateUnit(oldSerial: string, updates: Partial<SerialUnit>) {
     const idx = this.units.findIndex(u => u.serialNumber === oldSerial);
     if (idx !== -1) {
+      const newSerial = updates.serialNumber || oldSerial;
       this.units[idx] = { ...this.units[idx], ...updates };
+
+      // Update transactions if serial changed
+      if (newSerial !== oldSerial) {
+        this.transactions = this.transactions.map(t => ({
+          ...t,
+          serialNumbers: t.serialNumbers.map(s => s === oldSerial ? newSerial : s)
+        }));
+
+        // Update production plans
+        this.productionPlans = this.productionPlans.map(p => ({
+          ...p,
+          serials: p.serials.map(s => s === oldSerial ? newSerial : s)
+        }));
+      }
+
       this.persist();
     }
   }

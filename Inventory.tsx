@@ -2,15 +2,95 @@
 import React, { useState, useMemo } from 'react';
 import { inventoryService } from './inventoryService';
 import { exportExcelReport } from './reportService';
-import { UnitStatus } from './types';
-import { FileSpreadsheet, Warehouse as WarehouseIcon, Package, Info, CheckCircle, BarChart3, ChevronRight, Hash, RefreshCcw } from 'lucide-react';
+import { UnitStatus, SerialUnit } from './types';
+import { FileSpreadsheet, Warehouse as WarehouseIcon, Package, Info, CheckCircle, BarChart3, ChevronRight, Hash, RefreshCcw, Plus, Edit, Trash2, X, Save, AlertTriangle } from 'lucide-react';
+import { playSound } from './sound';
 
 export const Inventory: React.FC = () => {
   const warehouses = inventoryService.getWarehouses();
   const products = inventoryService.getProducts();
-  const allUnits = inventoryService.getUnits();
+  const [allUnits, setAllUnits] = useState(inventoryService.getUnits());
 
   const [selectedWhName, setSelectedWhName] = useState<string>('');
+  
+  // UI State
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingUnit, setEditingUnit] = useState<SerialUnit | null>(null);
+  const [newUnitData, setNewUnitData] = useState({ productId: '', serial: '', warehouse: '' });
+  const [editUnitData, setEditUnitData] = useState({ serial: '', warehouse: '' });
+  const [error, setError] = useState<string | null>(null);
+
+  const refreshData = () => {
+    setAllUnits(inventoryService.getUnits());
+  };
+
+  const handleDeleteUnit = (serial: string) => {
+    if (confirm(`Bạn có chắc chắn muốn xóa mã IMEI ${serial} khỏi hệ thống?`)) {
+      inventoryService.deleteUnit(serial);
+      playSound('success');
+      refreshData();
+    }
+  };
+
+  const handleAddUnit = () => {
+    try {
+      if (!newUnitData.productId || !newUnitData.serial || !newUnitData.warehouse) {
+        setError('Vui lòng điền đầy đủ thông tin.');
+        return;
+      }
+      inventoryService.addUnitManual(newUnitData.productId, newUnitData.serial, newUnitData.warehouse);
+      playSound('success');
+      setIsAddModalOpen(false);
+      setNewUnitData({ productId: '', serial: '', warehouse: '' });
+      setError(null);
+      refreshData();
+    } catch (err: any) {
+      setError(err.message);
+      playSound('error');
+    }
+  };
+
+  const handleEditUnit = () => {
+    if (!editingUnit) return;
+    try {
+      if (!editUnitData.serial || !editUnitData.warehouse) {
+        setError('Vui lòng điền đầy đủ thông tin.');
+        return;
+      }
+      
+      // Check if new serial already exists (and it's not the same as before)
+      if (editUnitData.serial !== editingUnit.serialNumber && inventoryService.getUnitBySerial(editUnitData.serial)) {
+        setError(`Mã ${editUnitData.serial} đã tồn tại.`);
+        return;
+      }
+
+      inventoryService.updateUnit(editingUnit.serialNumber, {
+        serialNumber: editUnitData.serial,
+        warehouseLocation: editUnitData.warehouse
+      });
+      
+      playSound('success');
+      setIsEditModalOpen(false);
+      setEditingUnit(null);
+      setError(null);
+      refreshData();
+    } catch (err: any) {
+      setError(err.message);
+      playSound('error');
+    }
+  };
+
+  const openEditModal = (unit: any) => {
+    // We need the full unit object, but inventoryData only has serials
+    const fullUnit = allUnits.find(u => u.serialNumber === unit.serial);
+    if (fullUnit) {
+      setEditingUnit(fullUnit);
+      setEditUnitData({ serial: fullUnit.serialNumber, warehouse: fullUnit.warehouseLocation });
+      setIsEditModalOpen(true);
+      setError(null);
+    }
+  };
 
   const currentWarehouse = useMemo(() => 
     warehouses.find(w => w.name === selectedWhName),
@@ -53,6 +133,12 @@ export const Inventory: React.FC = () => {
         </div>
         <div className="flex gap-2">
             <button 
+              onClick={() => { setIsAddModalOpen(true); setError(null); }}
+              className="bg-blue-600 text-white px-4 py-2.5 rounded-lg font-bold hover:bg-blue-700 transition-all flex items-center gap-2 shadow-sm active:scale-95"
+            >
+              <Plus size={18} /> Nhập thủ công
+            </button>
+            <button 
               onClick={exportExcelReport}
               className="bg-green-600 text-white px-4 py-2.5 rounded-lg font-bold hover:bg-green-700 transition-all flex items-center gap-2 shadow-sm active:scale-95"
             >
@@ -60,6 +146,133 @@ export const Inventory: React.FC = () => {
             </button>
         </div>
       </div>
+
+      {/* Add Modal */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <Plus className="text-blue-600" size={20} /> Nhập kho thủ công
+              </h3>
+              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {error && (
+                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium flex items-center gap-2">
+                  <AlertTriangle size={16} /> {error}
+                </div>
+              )}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">Sản phẩm (Model)</label>
+                <select 
+                  className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  value={newUnitData.productId}
+                  onChange={e => setNewUnitData({ ...newUnitData, productId: e.target.value })}
+                >
+                  <option value="">-- Chọn Model --</option>
+                  {products.map(p => <option key={p.id} value={p.id}>{p.model}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">Mã IMEI / Serial</label>
+                <input 
+                  type="text"
+                  className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                  placeholder="Nhập mã serial..."
+                  value={newUnitData.serial}
+                  onChange={e => setNewUnitData({ ...newUnitData, serial: e.target.value.trim() })}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">Kho lưu trữ</label>
+                <select 
+                  className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  value={newUnitData.warehouse}
+                  onChange={e => setNewUnitData({ ...newUnitData, warehouse: e.target.value })}
+                >
+                  <option value="">-- Chọn Kho --</option>
+                  {warehouses.map(wh => <option key={wh.id} value={wh.name}>{wh.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="p-6 bg-slate-50 flex gap-3">
+              <button 
+                onClick={() => setIsAddModalOpen(false)}
+                className="flex-1 py-3 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-all"
+              >
+                Hủy
+              </button>
+              <button 
+                onClick={handleAddUnit}
+                className="flex-1 py-3 rounded-xl font-bold bg-blue-600 text-white hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
+              >
+                <Save size={18} /> Lưu lại
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                <Edit className="text-orange-500" size={20} /> Chỉnh sửa thông tin IMEI
+              </h3>
+              <button onClick={() => setIsEditModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {error && (
+                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium flex items-center gap-2">
+                  <AlertTriangle size={16} /> {error}
+                </div>
+              )}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">Mã IMEI / Serial</label>
+                <input 
+                  type="text"
+                  className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                  placeholder="Nhập mã serial..."
+                  value={editUnitData.serial}
+                  onChange={e => setEditUnitData({ ...editUnitData, serial: e.target.value.trim() })}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">Kho lưu trữ</label>
+                <select 
+                  className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  value={editUnitData.warehouse}
+                  onChange={e => setEditUnitData({ ...editUnitData, warehouse: e.target.value })}
+                >
+                  <option value="">-- Chọn Kho --</option>
+                  {warehouses.map(wh => <option key={wh.id} value={wh.name}>{wh.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="p-6 bg-slate-50 flex gap-3">
+              <button 
+                onClick={() => setIsEditModalOpen(false)}
+                className="flex-1 py-3 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-all"
+              >
+                Hủy
+              </button>
+              <button 
+                onClick={handleEditUnit}
+                className="flex-1 py-3 rounded-xl font-bold bg-orange-500 text-white hover:bg-orange-600 transition-all flex items-center justify-center gap-2"
+              >
+                <Save size={18} /> Cập nhật
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row items-center gap-6">
         <div className="flex items-center gap-3 min-w-[200px]">
@@ -154,17 +367,31 @@ export const Inventory: React.FC = () => {
                             <div className="flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 pb-2">
                                 <Hash size={14} /> Danh sách IMEI đang tại kho
                             </div>
-                            <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 max-h-40 overflow-y-auto custom-scrollbar">
+                            <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 max-h-60 overflow-y-auto custom-scrollbar">
                                 {item.imeis.length > 0 ? (
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                         {item.imeis.map(u => (
-                                            <div key={u.serial} className={`relative bg-white border px-2 py-1.5 rounded-lg text-center font-mono text-[10px] font-bold shadow-sm transition-all ${u.isReimported ? 'border-orange-300 text-orange-700' : 'border-slate-200 text-slate-600'}`}>
-                                                {u.serial}
-                                                {u.isReimported && (
-                                                  <div className="absolute -top-1 -right-1 bg-orange-600 text-white rounded-full p-0.5 shadow-sm">
-                                                    <RefreshCcw size={8}/>
-                                                  </div>
-                                                )}
+                                            <div key={u.serial} className={`group/item relative bg-white border px-3 py-2 rounded-lg flex justify-between items-center font-mono text-[11px] font-bold shadow-sm transition-all hover:shadow-md ${u.isReimported ? 'border-orange-300 text-orange-700' : 'border-slate-200 text-slate-600'}`}>
+                                                <div className="flex items-center gap-2">
+                                                  {u.serial}
+                                                  {u.isReimported && <RefreshCcw size={10} className="text-orange-500"/>}
+                                                </div>
+                                                <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                                                  <button 
+                                                    onClick={() => openEditModal(u)}
+                                                    className="p-1 text-blue-500 hover:bg-blue-50 rounded"
+                                                    title="Sửa"
+                                                  >
+                                                    <Edit size={12} />
+                                                  </button>
+                                                  <button 
+                                                    onClick={() => handleDeleteUnit(u.serial)}
+                                                    className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                                    title="Xóa"
+                                                  >
+                                                    <Trash2 size={12} />
+                                                  </button>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>

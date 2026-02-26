@@ -241,6 +241,48 @@ class InventoryService {
   }
 
   checkSerialImported(s: string) { return this.units.some(u => u.serialNumber === s); }
+
+  deleteUnit(serial: string) {
+    this.units = this.units.filter(u => u.serialNumber !== serial);
+    this.persist();
+  }
+
+  updateUnit(oldSerial: string, updates: Partial<SerialUnit>) {
+    const idx = this.units.findIndex(u => u.serialNumber === oldSerial);
+    if (idx !== -1) {
+      this.units[idx] = { ...this.units[idx], ...updates };
+      this.persist();
+    }
+  }
+
+  addUnitManual(productId: string, serial: string, warehouse: string) {
+    if (this.getUnitBySerial(serial)) {
+      throw new Error(`Mã ${serial} đã tồn tại trong hệ thống.`);
+    }
+    const newUnit: SerialUnit = {
+      serialNumber: serial,
+      productId,
+      status: UnitStatus.NEW,
+      warehouseLocation: warehouse,
+      importDate: new Date().toISOString(),
+      isReimported: false
+    };
+    this.units = [...this.units, newUnit];
+    
+    // Also add a transaction for traceability
+    this.transactions = [{
+      id: `tx-manual-${Date.now()}`,
+      type: 'INBOUND',
+      date: new Date().toISOString(),
+      productId,
+      quantity: 1,
+      serialNumbers: [serial],
+      toLocation: warehouse,
+      planName: 'NHẬP THỦ CÔNG'
+    }, ...this.transactions];
+
+    this.persist();
+  }
 }
 
 export const inventoryService = new InventoryService();

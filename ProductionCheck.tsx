@@ -37,21 +37,7 @@ export const ProductionCheck: React.FC = () => {
 
   useEffect(() => {
     setPlans(inventoryService.getProductionPlans());
-    // Load draft if in CREATE mode
-    if (viewMode === 'CREATE') {
-      const drafts = inventoryService.getDrafts();
-      if (drafts.productionCheck && drafts.productionCheck.length > 0 && scannedList.length === 0) {
-        setScannedList(drafts.productionCheck);
-      }
-    }
   }, [viewMode]);
-
-  useEffect(() => {
-    // Save draft whenever scannedList changes in CREATE mode
-    if (viewMode === 'CREATE') {
-      inventoryService.saveDraft('productionCheck', scannedList);
-    }
-  }, [scannedList, viewMode]);
 
   useEffect(() => {
     if ((viewMode === 'CREATE' || viewMode === 'EDIT') && inputRef.current && editingIndex === null) {
@@ -76,7 +62,6 @@ export const ProductionCheck: React.FC = () => {
     } else {
       // Fix: Passed correctly typed string[] to addProductionPlan (Line 52)
       inventoryService.addProductionPlan(formName, formProductId, uniqueSerials);
-      inventoryService.clearDraft('productionCheck');
     }
     setViewMode('LIST');
     resetForm();
@@ -232,21 +217,9 @@ export const ProductionCheck: React.FC = () => {
                     </div>
 
                     <div className="space-y-3">
-                      <div className="grid grid-cols-2 gap-2">
-                        <button onClick={() => fileInputRef.current?.click()} className="text-[10px] text-blue-600 hover:bg-blue-50 py-2 rounded border border-dashed border-blue-200 flex items-center justify-center gap-2">
-                          <FileSpreadsheet size={12}/> Import Excel
-                        </button>
-                        <button 
-                          onClick={() => {
-                            const product = inventoryService.getProductById(formProductId);
-                            import('./services/reportService').then(m => m.exportDraftScannedList(scannedList, formName || 'Draft', product?.model));
-                          }} 
-                          disabled={scannedList.length === 0}
-                          className="text-[10px] text-green-600 hover:bg-green-50 py-2 rounded border border-dashed border-green-200 flex items-center justify-center gap-2 disabled:opacity-50"
-                        >
-                          <FileSpreadsheet size={12}/> Xuất Nháp
-                        </button>
-                      </div>
+                      <button onClick={() => fileInputRef.current?.click()} className="w-full text-xs text-blue-600 hover:bg-blue-50 py-2 rounded border border-dashed border-blue-200 flex items-center justify-center gap-2">
+                        <FileSpreadsheet size={14}/> Import từ Excel (.xlsx)
+                      </button>
                       <input type="file" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
                       <button 
                         onClick={handleSavePlan} 

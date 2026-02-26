@@ -22,8 +22,6 @@ export const Outbound: React.FC = () => {
   const [targetId, setTargetId] = useState<string>(''); 
   const [sourceWarehouse, setSourceWarehouse] = useState(warehouses.length > 0 ? warehouses[0].name : '');
   const [autoDetect, setAutoDetect] = useState(true); 
-  const [batchMode, setBatchMode] = useState(false);
-  const [pendingList, setPendingList] = useState<string[]>([]);
   
   const [currentSerial, setCurrentSerial] = useState('');
   const [recentScans, setRecentScans] = useState<{serial: string, time: string, fromWh: string, to: string}[]>([]);
@@ -38,40 +36,13 @@ export const Outbound: React.FC = () => {
   }, [activeTab, historyFrom, historyTo]);
 
   useEffect(() => {
-    if (activeTab === 'SCAN') {
-      inputRef.current?.focus();
-      // Load draft if in batch mode
-      if (batchMode) {
-        const drafts = inventoryService.getDrafts();
-        if (drafts.outbound && drafts.outbound.length > 0 && pendingList.length === 0) {
-          setPendingList(drafts.outbound);
-        }
-      }
-    }
-  }, [recentScans, message, selectedProductId, activeTab, sourceWarehouse, outboundType, targetId, autoDetect, batchMode]);
-
-  useEffect(() => {
-    if (batchMode) {
-      inventoryService.saveDraft('outbound', pendingList);
-    }
-  }, [pendingList, batchMode]);
+    if (activeTab === 'SCAN') inputRef.current?.focus();
+  }, [recentScans, message, selectedProductId, activeTab, sourceWarehouse, outboundType, targetId, autoDetect]);
 
   const handleAutoExport = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const scannedCode = currentSerial.trim();
     if (!scannedCode) return;
-
-    if (batchMode) {
-      if (pendingList.includes(scannedCode)) {
-        playSound('warning');
-        setMessage({ type: 'warning', text: `Mã ${scannedCode} đã có trong danh sách chờ!` });
-      } else {
-        setPendingList(prev => [scannedCode, ...prev]);
-        playSound('success');
-      }
-      setCurrentSerial('');
-      return;
-    }
 
     if (!selectedProductId) {
        playSound('error');
@@ -159,66 +130,6 @@ export const Outbound: React.FC = () => {
     setCurrentSerial('');
   };
 
-  const commitBatch = () => {
-    if (pendingList.length === 0) return;
-    let successCount = 0;
-    let errorCount = 0;
-    const newRecentScans: any[] = [];
-
-    // Process from bottom to top (oldest first)
-    const toProcess = [...pendingList].reverse();
-    
-    for (const serial of toProcess) {
-      const unit = inventoryService.getUnitBySerial(serial);
-      if (!unit || unit.productId !== selectedProductId || unit.status !== UnitStatus.NEW) {
-        errorCount++;
-        continue;
-      }
-
-      let actualLoc = unit.warehouseLocation;
-      let exportWhName = sourceWarehouse;
-      if (autoDetect) {
-        exportWhName = actualLoc;
-      } else if (actualLoc !== sourceWarehouse) {
-        errorCount++;
-        continue;
-      }
-
-      try {
-        const targetName = outboundType === 'SALE' 
-          ? (customers.find(c => c.id === targetId)?.name || 'Khách lẻ')
-          : (warehouses.find(w => w.id === targetId)?.name || 'Kho đích');
-
-        if (outboundType === 'SALE') {
-          inventoryService.exportUnits(selectedProductId, [serial], targetName, exportWhName);
-        } else {
-          inventoryService.transferUnits(selectedProductId, [serial], targetName);
-        }
-
-        successCount++;
-        newRecentScans.push({
-          serial,
-          time: new Date().toLocaleTimeString('vi-VN'),
-          fromWh: exportWhName,
-          to: targetName
-        });
-      } catch (err) {
-        errorCount++;
-      }
-    }
-
-    setRecentScans(prev => [...newRecentScans.reverse(), ...prev].slice(0, 50));
-    setPendingList([]);
-    inventoryService.clearDraft('outbound');
-    
-    setMessage({ 
-      type: errorCount === 0 ? 'success' : 'warning', 
-      text: `Hoàn tất: Thành công ${successCount}, Thất bại ${errorCount}` 
-    });
-    if (successCount > 0) playSound('success');
-    else playSound('error');
-  };
-
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-100">
@@ -286,32 +197,8 @@ export const Outbound: React.FC = () => {
                   <Zap size={12}/> Quét IMEI (Xử lý tức thì)
                 </label>
                 <form onSubmit={handleAutoExport}>
-                   <input ref={inputRef} type="text" placeholder={batchMode ? "Quét vào danh sách chờ..." : "Quét mã vạch xuất..."} className="w-full p-4 border-2 border-blue-100 rounded-2xl font-mono text-2xl shadow-sm outline-none focus:border-blue-500 transition-all bg-blue-50/30" value={currentSerial} onChange={(e) => setCurrentSerial(e.target.value)} />
+                   <input ref={inputRef} type="text" placeholder="Quét mã vạch xuất..." className="w-full p-4 border-2 border-blue-100 rounded-2xl font-mono text-2xl shadow-sm outline-none focus:border-blue-500 transition-all bg-blue-50/30" value={currentSerial} onChange={(e) => setCurrentSerial(e.target.value)} />
                 </form>
-                {batchMode && (
-                  <div className="mt-4 space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-slate-500">Danh sách chờ ({pendingList.length})</span>
-                      <button onClick={() => setPendingList([])} className="text-[10px] text-red-500 font-bold hover:underline">Xóa hết</button>
-                    </div>
-                    <div className="bg-slate-50 border rounded-xl p-2 max-h-40 overflow-y-auto custom-scrollbar space-y-1">
-                      {pendingList.map((s, i) => (
-                        <div key={i} className="flex justify-between items-center bg-white p-2 rounded border text-xs font-mono">
-                          <span>{s}</span>
-                          <button onClick={() => setPendingList(pendingList.filter((_, idx) => idx !== i))} className="text-slate-400 hover:text-red-500"><Trash2 size={12}/></button>
-                        </div>
-                      ))}
-                      {pendingList.length === 0 && <div className="text-center py-4 text-slate-400 text-[10px] italic">Trống</div>}
-                    </div>
-                    <button 
-                      onClick={commitBatch}
-                      disabled={pendingList.length === 0}
-                      className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 disabled:bg-slate-200 flex items-center justify-center gap-2 shadow-lg shadow-blue-100"
-                    >
-                      <CheckCircle size={18}/> Xác nhận Xuất kho ({pendingList.length})
-                    </button>
-                  </div>
-                )}
                 <p className="text-[10px] text-slate-400 mt-2 italic">* {autoDetect ? 'Hệ thống sẽ tự nhận diện máy nằm ở đâu.' : 'Chỉ cho xuất máy nằm trong kho đã chọn.'}</p>
             </div>
           </div>

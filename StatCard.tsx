@@ -3,21 +3,33 @@ import React from 'react';
 interface StatCardProps {
   title: string;
   value: string | number;
-  icon: React.ReactNode;
-  trend?: string;
-  colorClass?: string;
+  type: 'neutral' | 'success' | 'danger' | 'warning';
+  icon?: React.ReactNode;
 }
 
-export const StatCard: React.FC<StatCardProps> = ({ title, value, icon, trend, colorClass = "bg-white" }) => {
+export const StatCard: React.FC<StatCardProps> = ({ title, value, type, icon }) => {
+  const styles = {
+    neutral: "border-gray-300 text-gray-700 bg-white",
+    success: "border-green-400 text-green-600 bg-green-50/30",
+    danger: "border-red-300 text-red-600 bg-red-50/30",
+    warning: "border-amber-300 text-amber-600 bg-amber-50/30",
+  };
+
+  const titleColors = {
+    neutral: "text-gray-500",
+    success: "text-green-600",
+    danger: "text-red-500",
+    warning: "text-amber-600",
+  };
+
   return (
-    <div className={`${colorClass} p-6 rounded-xl shadow-sm border border-slate-100 flex items-start justify-between`}>
-      <div>
-        <p className="text-slate-500 text-sm font-medium mb-1">{title}</p>
-        <h3 className="text-2xl font-bold text-slate-800">{value}</h3>
-        {trend && <p className="text-xs text-green-600 mt-2 font-medium">{trend}</p>}
+    <div className={`p-4 rounded-lg border-2 shadow-sm flex flex-col items-center justify-center h-28 relative overflow-hidden ${styles[type]}`}>
+      <div className="flex justify-between items-center w-full absolute top-3 px-3">
+        <h3 className={`text-xs font-bold uppercase tracking-wider ${titleColors[type]}`}>{title}</h3>
+        {icon && <div className="opacity-80 scale-75">{icon}</div>}
       </div>
-      <div className="p-3 bg-slate-50 rounded-lg text-water-600">
-        {icon}
+      <div className="text-4xl font-bold mt-2">
+        {value}
       </div>
     </div>
   );

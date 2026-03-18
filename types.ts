@@ -1,84 +1,68 @@
-
-export enum UnitStatus {
-  NEW = 'NEW',
-  SOLD = 'SOLD',
-  WARRANTY = 'WARRANTY',
-  EXHIBITION = 'EXHIBITION'
+export interface ValidationRule {
+  id: string;
+  name: string; // Tên gợi nhớ (VD: List Model A, Check độ dài)
+  type: 'contains' | 'not_contains' | 'starts_with' | 'length_eq';
+  value: string; // Giá trị để so sánh (List phân cách bởi khoảng trắng/phẩy, hoặc số)
+  isActive: boolean; // Trạng thái bật tắt
+  errorMessage: string; // Câu báo lỗi riêng
 }
 
-export interface Product {
+export interface ScanRecord {
   id: string;
-  model: string;
-  brand: string;
-  specs: string; 
+  stt: number;
+  productCode: string;
+  model: string; // Used as validation prefix/pattern (Mã IMEI)
+  modelName?: string; // New field for the actual Model Name
+  employeeId: string;
+  timestamp: string; // ISO string
+  status: 'valid' | 'error' | 'defect'; // Added 'defect' for manufacturing errors (NG)
+  note?: string; 
+  stage: number; // The stage where this scan happened (1-5)
+  measurement?: string; // Recorded value (e.g. "12V", "PASS", "0.5kg")
+  additionalValues?: string[]; // Values for the 16 custom fields
 }
 
-export interface Warehouse {
-  id: string;
+export interface Stats {
+  success: number; // Count for current stage (OK)
+  defect: number;  // Count for manufacturing defects (NG)
+  error: number;   // System/Validation errors
+}
+
+export interface ErrorState {
+  isOpen: boolean;
+  message: string;
+}
+
+export interface Stage {
+  id: number;
   name: string;
-  address?: string;
-  maxCapacity?: number; // Sức chứa tối đa (số lượng máy)
+  // Removed isEnabled
+  enableMeasurement?: boolean; // Does this stage require a measurement?
+  measurementLabel?: string;   // Label for the measurement
+  measurementStandard?: string; // New: Standard value to compare against (e.g. "PASS", "OK")
+  additionalFieldLabels?: string[]; // Labels for 16 custom fields. Empty string = disabled.
+  additionalFieldDefaults?: string[]; // New: Default values for the 16 fields.
+  additionalFieldValidationLists?: string[]; // New: Whitelists for the 16 fields (string data).
+  additionalFieldMins?: string[]; // New: Min values for range check
+  additionalFieldMaxs?: string[]; // New: Max values for range check
+  validationRules?: ValidationRule[]; // New: List of flexible validation rules
 }
 
-export interface Customer {
-  id: string;
-  name: string;
-  phone?: string;
-  type: 'DEALER' | 'RETAIL'; 
-}
+// Helper to create empty arrays of size 16
+const EMPTY_16 = Array(16).fill("");
 
-export interface SerialUnit {
-  serialNumber: string;
-  productId: string;
-  status: UnitStatus;
-  warehouseLocation: string; 
-  importDate: string;
-  exportDate?: string;
-  customerName?: string;
-  isReimported?: boolean; 
-}
-
-export interface Transaction {
-  id: string;
-  type: 'INBOUND' | 'OUTBOUND' | 'TRANSFER';
-  date: string;
-  productId: string;
-  quantity: number;
-  serialNumbers: string[];
-  fromLocation?: string; // Kho nguồn
-  toLocation?: string;   // Kho đích
-  customer?: string;   
-  isReimportTx?: boolean; 
-  planName?: string;    
-}
-
-export interface InventoryStats {
-  totalUnits: number;
-  lowStockModels: string[];
-  recentTransactions: Transaction[];
-}
-
-export interface ProductionPlan {
-  id: string;
-  name: string; 
-  productId: string; 
-  createdDate: string;
-  serials: string[]; 
-}
-
-export interface SalesOrderItem {
-  productId: string;
-  quantity: number;
-  scannedCount: number;
-}
-
-export interface SalesOrder {
-  id: string;
-  code: string;
-  type: 'SALE' | 'TRANSFER';
-  status: 'PENDING' | 'COMPLETED';
-  customerName?: string;
-  destinationWarehouse?: string;
-  createdDate: string;
-  items: SalesOrderItem[];
-}
+export const DEFAULT_PROCESS_STAGES: Stage[] = [
+  { 
+    id: 1, 
+    name: "Kiểm tra sản phẩm", 
+    enableMeasurement: true, 
+    measurementLabel: "Kết quả Test", 
+    measurementStandard: "OK", 
+    additionalFieldLabels: [...EMPTY_16], 
+    additionalFieldDefaults: [...EMPTY_16],
+    additionalFieldValidationLists: [...EMPTY_16],
+    additionalFieldMins: [...EMPTY_16],
+    additionalFieldMaxs: [...EMPTY_16],
+    validationRules: []
+  }
+];

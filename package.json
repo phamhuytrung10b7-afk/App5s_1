@@ -1,26 +1,43 @@
 {
-  "name": "ro-master-wms-vip",
+  "name": "proscan-manufacturing-tracker",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "main": "main.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "tsc --noEmit",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron:build": "npm run build && electron-builder"
   },
   "dependencies": {
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "@google/genai": "^1.40.0",
-    "lucide-react": "^0.563.0",
-    "recharts": "^3.7.0",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.562.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
     "xlsx": "0.18.5"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "electron": "^40.1.0",
+    "electron-builder": "^26.4.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
+  },
+  "build": {
+    "appId": "com.proscan.tracker",
+    "productName": "Proscan Tracker",
+    "directories": {
+      "output": "dist_electron"
+    },
+    "win": {
+      "target": "portable",
+      "icon": "dist/favicon.ico"
+    },
+    "files": [
+      "dist/**/*",
+      "main.js"
+    ]
   }
 }

@@ -17,9 +17,20 @@ export default function App() {
   // --- STATE ---
   
   // Configuration
-  const [stageEmployees, setStageEmployees] = useState<Record<number, string>>({});
-  const [currentModel, setCurrentModel] = useState<string>(''); // Used for IMEI Validation (Space separated list)
-  const [modelName, setModelName] = useState<string>(''); // New: Actual Model Name
+  const [stageEmployees, setStageEmployees] = useState<Record<number, string>>(() => {
+    try {
+      const saved = localStorage.getItem('proscan_stageEmployees');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+  const [currentModel, setCurrentModel] = useState<string>(() => {
+    return localStorage.getItem('proscan_currentModel') || '';
+  }); // Used for IMEI Validation (Space separated list)
+  const [modelName, setModelName] = useState<string>(() => {
+    return localStorage.getItem('proscan_modelName') || '';
+  }); // New: Actual Model Name
   
   // Dynamic Stages with LocalStorage Persistence
   const [stages, setStages] = useState<Stage[]>(() => {
@@ -54,7 +65,14 @@ export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Data
-  const [history, setHistory] = useState<ScanRecord[]>([]);
+  const [history, setHistory] = useState<ScanRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem('proscan_history');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
   const [productProgress, setProductProgress] = useState<Record<string, number>>({});
   const [productStatus, setProductStatus] = useState<Record<string, 'valid' | 'defect'>>({});
   
@@ -111,6 +129,13 @@ export default function App() {
   }, []);
 
   const saveData = async (updatedHistory: ScanRecord[], updatedStages: Stage[], updatedEmployees: Record<number, string>) => {
+    // Save to LocalStorage first for immediate persistence
+    localStorage.setItem('proscan_history', JSON.stringify(updatedHistory));
+    localStorage.setItem('proscan_stages', JSON.stringify(updatedStages));
+    localStorage.setItem('proscan_stageEmployees', JSON.stringify(updatedEmployees));
+    localStorage.setItem('proscan_currentModel', currentModel);
+    localStorage.setItem('proscan_modelName', modelName);
+
     try {
       await fetch(`${API_BASE}/save`, {
         method: 'POST',
@@ -132,10 +157,28 @@ export default function App() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
+  // --- EFFECT: Save Config to LocalStorage ---
+  useEffect(() => {
+    localStorage.setItem('proscan_currentModel', currentModel);
+  }, [currentModel]);
+
+  useEffect(() => {
+    localStorage.setItem('proscan_modelName', modelName);
+  }, [modelName]);
+
+  useEffect(() => {
+    localStorage.setItem('proscan_stageEmployees', JSON.stringify(stageEmployees));
+  }, [stageEmployees]);
+
   // --- EFFECT: Save Stages to LocalStorage (Backup) ---
   useEffect(() => {
     localStorage.setItem('proscan_stages', JSON.stringify(stages));
   }, [stages]);
+
+  // --- EFFECT: Save History to LocalStorage ---
+  useEffect(() => {
+    localStorage.setItem('proscan_history', JSON.stringify(history));
+  }, [history]);
 
   // --- EFFECT: Calculate Stats for Current Stage ---
   useEffect(() => {

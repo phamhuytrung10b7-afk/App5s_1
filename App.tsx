@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Download, ScanLine, Users, CheckCircle, AlertOctagon, RefreshCw, Box, Settings, AlertTriangle, Layers, Edit, XCircle, Activity, List, Tag, Upload, Maximize, Minimize } from 'lucide-react';
 import { format } from 'date-fns';
-import { read, utils } from 'xlsx';
+import { read, utils, write } from 'xlsx';
 
 import { ScanRecord, Stats, ErrorState, DEFAULT_PROCESS_STAGES, Stage } from './types';
 import { Button } from './Button';
@@ -602,60 +602,75 @@ export default function App() {
     }, 50);
   };
 
-  const exportCSV = useCallback(() => {
-    const dynamicColsDef: { header: string, stageId: number, valueIndex: number }[] = [];
-    stages.forEach(stage => {
-        if (stage.additionalFieldLabels?.some(l => l && l.trim())) {
-             stage.additionalFieldLabels.forEach((label, idx) => {
-                 if (label && label.trim()) {
-                     dynamicColsDef.push({
-                         header: `${stage.name} - ${label}`,
-                         stageId: stage.id,
-                         valueIndex: idx
-                     });
-                 }
-             });
-        }
+  const exportToExcel = useCallback(() => {
+    // 1. Get unique IMEIs (productCode)
+    // We want to preserve the order of appearance in history
+    const uniqueIMEIs: string[] = [];
+    const seen = new Set<string>();
+    // Reverse history to get the latest first, but we want the order of appearance
+    // Actually, let's just get them in the order they appear in history (which is newest first)
+    // But usually people want oldest first in Excel.
+    [...history].reverse().forEach(h => {
+      if (!seen.has(h.productCode)) {
+        seen.add(h.productCode);
+        uniqueIMEIs.push(h.productCode);
+      }
     });
-
-    const headers = ["STT", "IMEI", "Tên Model", "Mã Kiểm Tra", "Công Đoạn", "Kết quả chính", ...dynamicColsDef.map(d => d.header), "Nhân Viên", "Thời Gian", "Trạng Thái", "Ghi Chú"];
     
-    const rows = history.map(item => {
-      const stageObj = stages.find(s => s.id === item.stage);
-      const stageName = stageObj?.name || `Công đoạn ${item.stage}`;
-      
-      let statusText = 'LỖI';
-      if (item.status === 'valid') statusText = 'OK';
-      if (item.status === 'defect') statusText = 'NG (Hàng Lỗi)';
-      
-      const dynamicCells = dynamicColsDef.map(def => {
-          if (item.stage === def.stageId) {
-              return item.additionalValues?.[def.valueIndex] || "-";
-          }
-          return "";
+    // 2. Prepare the data rows
+    const rows = uniqueIMEIs.map((imei, idx) => {
+      const imeiRecords = history.filter(h => h.productCode === imei);
+      // Get the latest record for each stage
+      const stageData: Record<number, ScanRecord> = {};
+      imeiRecords.forEach(rec => {
+        if (!stageData[rec.stage] || new Date(rec.timestamp) > new Date(stageData[rec.stage].timestamp)) {
+          stageData[rec.stage] = rec;
+        }
       });
 
-      return [
-        item.stt,
-        item.productCode,
-        item.modelName || '',
-        item.model,
-        stageName,
-        item.measurement || '-',
-        ...dynamicCells,
-        item.employeeId,
-        format(new Date(item.timestamp), 'yyyy-MM-dd HH:mm:ss'),
-        statusText,
-        item.note || ''
-      ];
+      const firstRec = imeiRecords[imeiRecords.length - 1]; // Oldest record for basic info
+      
+      const row: any = {
+        "STT": idx + 1,
+        "IMEI": imei,
+        "Tên Model": firstRec.modelName || '',
+        "Mã Kiểm Tra": firstRec.model,
+      };
+
+      // Add data for each stage (1 to 5)
+      [...stages].sort((a, b) => a.id - b.id).forEach(stage => {
+        const rec = stageData[stage.id];
+        const prefix = `CĐ${stage.id}`; // Short prefix for columns
+        
+        row[`${prefix} - Kết quả`] = rec ? (rec.measurement || 'OK') : '-';
+        
+        // Add additional params if they exist in the stage definition
+        stage.additionalFieldLabels?.forEach((label, pIdx) => {
+          if (label && label.trim()) {
+            row[`${prefix} - ${label}`] = rec?.additionalValues?.[pIdx] || '-';
+          }
+        });
+
+        row[`${prefix} - NV`] = rec?.employeeId || '-';
+        row[`${prefix} - Thời gian`] = rec ? format(new Date(rec.timestamp), 'yyyy-MM-dd HH:mm:ss') : '-';
+        row[`${prefix} - Trạng thái`] = rec ? (rec.status === 'valid' ? 'OK' : rec.status === 'defect' ? 'NG' : 'ERR') : '-';
+      });
+
+      return row;
     });
 
-    const csvContent = [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    // 3. Create Excel file using xlsx
+    const worksheet = utils.json_to_sheet(rows);
+    const workbook = utils.book_new();
+    utils.book_append_sheet(workbook, worksheet, "Dữ liệu sản xuất");
+    
+    // 4. Generate buffer and download
+    const excelBuffer = write(workbook, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `scan_process_data_${format(new Date(), 'yyyyMMdd_HHmmss')}.csv`);
+    link.setAttribute("download", `Bao_cao_san_xuat_${format(new Date(), 'yyyyMMdd_HHmmss')}.xlsx`);
     link.click();
   }, [history, stages]);
 
@@ -740,7 +755,7 @@ export default function App() {
              
              <Button onClick={() => setIsSettingsOpen(true)} className="text-sm bg-slate-700 hover:bg-slate-600 border border-slate-600" title="Cấu hình công đoạn"><Edit size={16} /></Button>
              <Button onClick={toggleFullScreen} className="text-sm bg-slate-700 hover:bg-slate-600 border border-slate-600" title="Toàn màn hình">{isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}</Button>
-             <Button onClick={exportCSV} variant="success" className="text-sm"><Download size={16} className="mr-1 inline" /> Excel</Button>
+             <Button onClick={exportToExcel} variant="success" className="text-sm"><Download size={16} className="mr-1 inline" /> Excel</Button>
              <Button onClick={resetSession} variant="secondary" className="text-sm"><RefreshCw size={16} className="mr-1 inline" /> Reset</Button>
           </div>
         </div>

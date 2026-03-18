@@ -199,7 +199,6 @@ export default function App() {
   // --- INITIAL FOCUS ---
   useEffect(() => {
     if (!modelName) modelNameRef.current?.focus();
-    else if (!currentModel) modelInputRef.current?.focus();
     else if (!currentEmployeeId) employeeInputRef.current?.focus();
     else {
       // Logic for initial focus based on stage config
@@ -416,13 +415,15 @@ export default function App() {
       if (!code) return;
 
       if (!modelName.trim()) return handleError("Lỗi: Chưa nhập Tên Model.", code);
-      if (!currentModel.trim()) return handleError("Lỗi: Chưa có List IMEI chuẩn.", code);
-      const validPatterns = currentModel.trim().split(/\s+/).map(s => s.trim().toUpperCase()).filter(s => s.length > 0);
       if (!currentEmployeeId) return handleError(`Lỗi: Chưa xác định nhân viên cho công đoạn ${currentStage}.`, code);
       
-      const isMatch = validPatterns.some(pattern => code.toUpperCase().includes(pattern));
-      if (!isMatch) {
-         return handleError(`Lỗi: Mã không nằm trong kế hoạch sản xuất.\nMã quét: ${code}`, code);
+      // --- IMEI Validation (Optional) ---
+      if (currentModel.trim()) {
+        const validPatterns = currentModel.trim().split(/\s+/).map(s => s.trim().toUpperCase()).filter(s => s.length > 0);
+        const isMatch = validPatterns.some(pattern => code.toUpperCase().includes(pattern));
+        if (!isMatch) {
+           return handleError(`Lỗi: Mã không nằm trong kế hoạch sản xuất.\nMã quét: ${code}`, code);
+        }
       }
 
       // --- NEW: Whitelist Check ---
@@ -533,7 +534,6 @@ export default function App() {
     
     setTimeout(() => {
       if (!modelName.trim()) modelNameRef.current?.focus();
-      else if (!currentModel.trim()) modelInputRef.current?.focus();
       else if (!currentEmployeeId) employeeInputRef.current?.focus();
       else if (currentStageObj?.enableMeasurement) {
          if (!measurementValue) measurementInputRef.current?.focus();

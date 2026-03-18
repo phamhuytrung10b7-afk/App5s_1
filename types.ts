@@ -1,12 +1,3 @@
-export interface ValidationRule {
-  id: string;
-  name: string; // Tên gợi nhớ (VD: List Model A, Check độ dài)
-  type: 'contains' | 'not_contains' | 'starts_with' | 'length_eq';
-  value: string; // Giá trị để so sánh (List phân cách bởi khoảng trắng/phẩy, hoặc số)
-  isActive: boolean; // Trạng thái bật tắt
-  errorMessage: string; // Câu báo lỗi riêng
-}
-
 export interface ScanRecord {
   id: string;
   stt: number;
@@ -19,7 +10,7 @@ export interface ScanRecord {
   note?: string; 
   stage: number; // The stage where this scan happened (1-5)
   measurement?: string; // Recorded value (e.g. "12V", "PASS", "0.5kg")
-  additionalValues?: string[]; // Values for the 16 custom fields
+  additionalValues?: string[]; // Values for the 8 custom fields
 }
 
 export interface Stats {
@@ -40,29 +31,24 @@ export interface Stage {
   enableMeasurement?: boolean; // Does this stage require a measurement?
   measurementLabel?: string;   // Label for the measurement
   measurementStandard?: string; // New: Standard value to compare against (e.g. "PASS", "OK")
-  additionalFieldLabels?: string[]; // Labels for 16 custom fields. Empty string = disabled.
-  additionalFieldDefaults?: string[]; // New: Default values for the 16 fields.
-  additionalFieldValidationLists?: string[]; // New: Whitelists for the 16 fields (string data).
-  additionalFieldMins?: string[]; // New: Min values for range check
-  additionalFieldMaxs?: string[]; // New: Max values for range check
-  validationRules?: ValidationRule[]; // New: List of flexible validation rules
+  additionalFieldLabels?: string[]; // Labels for 8 custom fields. Empty string = disabled.
+  additionalFieldDefaults?: string[]; // New: Default values for the 8 fields.
+  additionalFieldMinValues?: string[]; // New: Min values for validation
+  additionalFieldMaxValues?: string[]; // New: Max values for validation
+  additionalFieldWhitelists?: string[][]; // New: Whitelists for each of the 8 fields
+  additionalFieldWhitelistFileNames?: string[]; // New: File names for each whitelist
+  whitelist?: string[]; // New: List of allowed product codes (Stage-level)
+  whitelistFileName?: string; // New: Name of the uploaded whitelist file (Stage-level)
 }
 
-// Helper to create empty arrays of size 16
-const EMPTY_16 = Array(16).fill("");
+// Helper to create empty arrays of size 8
+const EMPTY_8 = Array(8).fill("");
+const EMPTY_8_ARRAYS = Array(8).fill([]);
 
 export const DEFAULT_PROCESS_STAGES: Stage[] = [
-  { 
-    id: 1, 
-    name: "Kiểm tra sản phẩm", 
-    enableMeasurement: true, 
-    measurementLabel: "Kết quả Test", 
-    measurementStandard: "OK", 
-    additionalFieldLabels: [...EMPTY_16], 
-    additionalFieldDefaults: [...EMPTY_16],
-    additionalFieldValidationLists: [...EMPTY_16],
-    additionalFieldMins: [...EMPTY_16],
-    additionalFieldMaxs: [...EMPTY_16],
-    validationRules: []
-  }
+  { id: 1, name: "Công đoạn 1: SMT / Lắp ráp", enableMeasurement: false, measurementLabel: "", additionalFieldLabels: [...EMPTY_8], additionalFieldDefaults: [...EMPTY_8], additionalFieldMinValues: [...EMPTY_8], additionalFieldMaxValues: [...EMPTY_8], additionalFieldWhitelists: [...EMPTY_8_ARRAYS], additionalFieldWhitelistFileNames: [...EMPTY_8] },
+  { id: 2, name: "Công đoạn 2: Kiểm tra ngoại quan", enableMeasurement: false, measurementLabel: "", additionalFieldLabels: [...EMPTY_8], additionalFieldDefaults: [...EMPTY_8], additionalFieldMinValues: [...EMPTY_8], additionalFieldMaxValues: [...EMPTY_8], additionalFieldWhitelists: [...EMPTY_8_ARRAYS], additionalFieldWhitelistFileNames: [...EMPTY_8] },
+  { id: 3, name: "Công đoạn 3: Function Test", enableMeasurement: true, measurementLabel: "Kết quả Test", measurementStandard: "PASS", additionalFieldLabels: [...EMPTY_8], additionalFieldDefaults: [...EMPTY_8], additionalFieldMinValues: [...EMPTY_8], additionalFieldMaxValues: [...EMPTY_8], additionalFieldWhitelists: [...EMPTY_8_ARRAYS], additionalFieldWhitelistFileNames: [...EMPTY_8] },
+  { id: 4, name: "Công đoạn 4: Đóng gói", enableMeasurement: false, measurementLabel: "", additionalFieldLabels: [...EMPTY_8], additionalFieldDefaults: [...EMPTY_8], additionalFieldMinValues: [...EMPTY_8], additionalFieldMaxValues: [...EMPTY_8], additionalFieldWhitelists: [...EMPTY_8_ARRAYS], additionalFieldWhitelistFileNames: [...EMPTY_8] },
+  { id: 5, name: "Công đoạn 5: OBA / Xuất xưởng", enableMeasurement: false, measurementLabel: "", additionalFieldLabels: [...EMPTY_8], additionalFieldDefaults: [...EMPTY_8], additionalFieldMinValues: [...EMPTY_8], additionalFieldMaxValues: [...EMPTY_8], additionalFieldWhitelists: [...EMPTY_8_ARRAYS], additionalFieldWhitelistFileNames: [...EMPTY_8] },
 ];

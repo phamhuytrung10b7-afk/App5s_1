@@ -1,4 +1,3 @@
-
 import React, { forwardRef } from 'react';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -31,4 +30,4 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(({
   );
 });
 
-Button.displayName = "Button";
+Button.displayName = 'Button';

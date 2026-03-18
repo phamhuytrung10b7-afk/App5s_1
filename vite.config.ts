@@ -9,8 +9,6 @@ const __dirname = path.dirname(__filename);
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
-      // Thêm dòng base này để hỗ trợ chạy file cục bộ trên Electron
-      base: './', 
       server: {
         port: 3000,
         host: '0.0.0.0',

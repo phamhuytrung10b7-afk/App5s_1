@@ -1,93 +1,77 @@
 
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
+import express from 'express';
+import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
-
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*", // Allow connections from any machine on the LAN
-    methods: ["GET", "POST"]
-  }
-});
+// Tăng giới hạn payload để lưu lịch sử lớn
+app.use(express.json({ limit: '50mb' }));
 
 const DATA_FILE = path.join(__dirname, 'manufacturing_data.json');
 
-// --- Default Data Structure ---
+// --- Cấu trúc dữ liệu mặc định ---
+const DEFAULT_STAGES = [
+    { id: 1, name: "Công đoạn 1: SMT / Lắp ráp", enableMeasurement: false, measurementLabel: "", additionalFieldLabels: Array(8).fill(""), additionalFieldDefaults: Array(8).fill(""), additionalFieldMinValues: Array(8).fill(""), additionalFieldMaxValues: Array(8).fill(""), additionalFieldWhitelists: Array(8).fill([]), additionalFieldWhitelistFileNames: Array(8).fill("") },
+    { id: 2, name: "Công đoạn 2: Kiểm tra ngoại quan", enableMeasurement: false, measurementLabel: "", additionalFieldLabels: Array(8).fill(""), additionalFieldDefaults: Array(8).fill(""), additionalFieldMinValues: Array(8).fill(""), additionalFieldMaxValues: Array(8).fill(""), additionalFieldWhitelists: Array(8).fill([]), additionalFieldWhitelistFileNames: Array(8).fill("") },
+    { id: 3, name: "Công đoạn 3: Function Test", enableMeasurement: true, measurementLabel: "Kết quả Test", measurementStandard: "PASS", additionalFieldLabels: Array(8).fill(""), additionalFieldDefaults: Array(8).fill(""), additionalFieldMinValues: Array(8).fill(""), additionalFieldMaxValues: Array(8).fill(""), additionalFieldWhitelists: Array(8).fill([]), additionalFieldWhitelistFileNames: Array(8).fill("") },
+    { id: 4, name: "Công đoạn 4: Đóng gói", enableMeasurement: false, measurementLabel: "", additionalFieldLabels: Array(8).fill(""), additionalFieldDefaults: Array(8).fill(""), additionalFieldMinValues: Array(8).fill(""), additionalFieldMaxValues: Array(8).fill(""), additionalFieldWhitelists: Array(8).fill([]), additionalFieldWhitelistFileNames: Array(8).fill("") },
+    { id: 5, name: "Công đoạn 5: OBA / Xuất xưởng", enableMeasurement: false, measurementLabel: "", additionalFieldLabels: Array(8).fill(""), additionalFieldDefaults: Array(8).fill(""), additionalFieldMinValues: Array(8).fill(""), additionalFieldMaxValues: Array(8).fill(""), additionalFieldWhitelists: Array(8).fill([]), additionalFieldWhitelistFileNames: Array(8).fill("") },
+];
+
 let appState = {
   history: [],
-  stages: [
-    { id: 1, name: "Kiểm tra sản phẩm", enableMeasurement: true, measurementLabel: "Kết quả Test" },
-  ],
-  stageEmployees: {}, // { 1: "NV001" }
+  stages: DEFAULT_STAGES,
+  stageEmployees: {},
 };
 
-// --- Load Data from Disk ---
+// --- Load dữ liệu từ đĩa ---
 if (fs.existsSync(DATA_FILE)) {
   try {
     const raw = fs.readFileSync(DATA_FILE, 'utf8');
-    appState = JSON.parse(raw);
-    console.log("📂 Data loaded from disk.");
+    const loaded = JSON.parse(raw);
+    
+    // Merge dữ liệu cũ với cấu trúc mới nếu cần
+    appState = { ...appState, ...loaded };
+    console.log("📂 Đã tải dữ liệu từ đĩa.");
   } catch (e) {
-    console.error("Error loading data:", e);
+    console.error("Lỗi tải dữ liệu:", e);
   }
 }
 
-// --- Save Data Helper ---
-const saveData = () => {
+// --- API Endpoints ---
+
+// Lấy toàn bộ dữ liệu (cho Client khi mới vào)
+app.get('/api/data', (req, res) => {
+  res.json(appState);
+});
+
+// Lưu dữ liệu (Client gửi lên khi có thay đổi)
+app.post('/api/save', (req, res) => {
+  const { history, stages, stageEmployees } = req.body;
+
+  if (history) appState.history = history;
+  if (stages) appState.stages = stages;
+  if (stageEmployees) appState.stageEmployees = stageEmployees;
+
+  // Ghi xuống file JSON (async)
   fs.writeFile(DATA_FILE, JSON.stringify(appState, null, 2), (err) => {
-    if (err) console.error("Error saving data:", err);
-  });
-};
-
-io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
-
-  // 1. Send initial data to the newly connected client
-  socket.emit('init_data', appState);
-
-  // 2. Listen for new scans
-  socket.on('client_add_scan', (newRecord) => {
-    // Add to history
-    appState.history.unshift(newRecord);
-    
-    // Broadcast updated history to ALL clients
-    io.emit('server_update_history', appState.history);
-    saveData();
-  });
-
-  // 3. Listen for Stage Settings changes
-  socket.on('client_update_stages', (newStages) => {
-    appState.stages = newStages;
-    io.emit('server_update_stages', appState.stages);
-    saveData();
-  });
-
-  // 4. Listen for Employee changes
-  socket.on('client_update_employee', ({ stageId, employeeId }) => {
-    appState.stageEmployees[stageId] = employeeId;
-    io.emit('server_update_employees', appState.stageEmployees);
-    saveData();
-  });
-
-  // 5. Reset Data
-  socket.on('client_reset_data', () => {
-    appState.history = [];
-    appState.stageEmployees = {};
-    // Keep stages config
-    io.emit('init_data', appState);
-    saveData();
+    if (err) {
+      console.error("Lỗi lưu file:", err);
+      return res.status(500).json({ error: "Lỗi lưu dữ liệu" });
+    }
+    res.json({ success: true });
   });
 });
 
-const PORT = 3000;
-server.listen(PORT, () => {
-  console.log(`🚀 ProScan Server running on port ${PORT}`);
-  console.log(`📡 Connect clients to: http://[YOUR_PC_IP]:${PORT}`);
+// Chạy trên port 3001 để tránh xung đột với Vite (3000)
+const PORT = 3001;
+app.listen(PORT, () => {
+  console.log(`🚀 ProScan Server đang chạy tại: http://localhost:${PORT}`);
+  console.log(`📡 API Endpoint: http://localhost:${PORT}/api/data`);
 });

@@ -82,6 +82,19 @@ export default function App() {
   // Refs for 8 additional inputs
   const extraInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
+  // --- AUDIO HELPERS ---
+  const playSuccessSound = useCallback(() => {
+    const audio = new Audio('https://www.soundjay.com/buttons/beep-07.wav');
+    audio.volume = 0.5;
+    audio.play().catch(e => console.log("Audio play blocked:", e));
+  }, []);
+
+  const playErrorSound = useCallback(() => {
+    const audio = new Audio('https://www.soundjay.com/misc/sounds/emergency-siren-01.mp3');
+    audio.volume = 1.0; // Max volume
+    audio.play().catch(e => console.log("Audio play blocked:", e));
+  }, []);
+
   // --- EFFECT: Sync with Server ---
   const fetchData = useCallback(async () => {
     try {
@@ -343,6 +356,7 @@ export default function App() {
     const newHistory = [errorRecord, ...history];
     setHistory(newHistory);
     saveData(newHistory, stages, stageEmployees);
+    playErrorSound(); // Play loud alarm
     setErrorModal({ isOpen: true, message });
   };
 
@@ -365,6 +379,7 @@ export default function App() {
     const newHistory = [newRecord, ...history];
     setHistory(newHistory);
     saveData(newHistory, stages, stageEmployees);
+    playSuccessSound(); // Play success beep
     
     setProductInput('');
     setDefectCode('');
@@ -396,6 +411,7 @@ export default function App() {
     const newHistory = [newRecord, ...history];
     setHistory(newHistory);
     saveData(newHistory, stages, stageEmployees);
+    playErrorSound(); // Play alarm for defect as well
     
     setProductInput('');
     setDefectCode(''); 

@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+@media print {
+  body > *:not(.print-portal) { display: none !important; }
+  .print-portal { display: block !important; }
+}
+</style>
+</head>
+<body>
+  <div id="root">This is app</div>
+  <div class="print-portal" style="display: none;">
+    This is print
+  </div>
+</body>
+</html>

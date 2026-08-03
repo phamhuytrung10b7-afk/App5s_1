@@ -13,7 +13,7 @@ export interface PrintConfig {
 export type AllPrintConfigs = Record<PrintLayout, PrintConfig>;
 
 export const defaultPrintConfigs: AllPrintConfigs = {
-  a7: { pageWidth: 74, pageHeight: 105, qrSize: 45, nameFontSize: 20, codeFontSize: 16, metaFontSize: 12, padding: 4 },
+  a7: { pageWidth: 74, pageHeight: 105, qrSize: 42, nameFontSize: 15, codeFontSize: 13, metaFontSize: 11, padding: 4 },
   single: { pageWidth: 35, pageHeight: 22, qrSize: 15, nameFontSize: 9, codeFontSize: 8, metaFontSize: 7, padding: 1 },
   double: { pageWidth: 73, pageHeight: 22, qrSize: 15, nameFontSize: 9, codeFontSize: 8, metaFontSize: 7, padding: 1 },
 };

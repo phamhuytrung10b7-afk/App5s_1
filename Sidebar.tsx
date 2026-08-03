@@ -7,6 +7,7 @@ import {
   ArrowUpRight,
   ClipboardCheck,
   History,
+  MapPin,
   BarChart3,
   Settings,
   ShieldAlert,
@@ -38,6 +39,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'stock_in', label: 'Nhập kho', icon: ArrowDownLeft },
     { id: 'stock_out', label: 'Xuất kho', icon: ArrowUpRight },
     { id: 'bin_card', label: 'Lịch sử / Thẻ kho', icon: History },
+    { id: 'warehouse_map', label: 'Sơ đồ kho (Vị trí)', icon: MapPin },
     { id: 'reports', label: 'Báo cáo', icon: BarChart3 },
     { id: 'settings', label: 'Cài đặt & Dữ liệu', icon: Settings },
   ];

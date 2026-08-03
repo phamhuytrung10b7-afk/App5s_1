@@ -18,10 +18,12 @@ export function parseScannedQrPayload(raw: string): {
   contNumber?: string;
   tagId?: string;
   contDate?: string;
+  supplier?: string;
+  mfgDate?: string;
 } {
   const str = raw.trim();
 
-  // 1. Pipe format CONT_IN|MãVT|SốLượng|MãCont|TagID|NgàyCont
+  // 1. Pipe format CONT_IN|MãVT|SốLượng|MãCont|TagID|NgàyCont|Supplier|MfgDate
   if (str.startsWith('CONT_IN|')) {
     const parts = str.split('|');
     return {
@@ -30,6 +32,8 @@ export function parseScannedQrPayload(raw: string): {
       contNumber: parts[3] || '',
       tagId: parts[4] || '',
       contDate: parts[5] || '',
+      supplier: parts[6] || undefined,
+      mfgDate: parts[7] || undefined,
     };
   }
 
@@ -44,6 +48,8 @@ export function parseScannedQrPayload(raw: string): {
           contNumber: obj.cont || obj.contNumber,
           tagId: obj.tagId || obj.id,
           contDate: obj.contDate || obj.date,
+          supplier: obj.supplier || obj.supplierName,
+          mfgDate: obj.mfgDate || obj.mfg,
         };
       }
     } catch {
@@ -115,6 +121,18 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
 
     const parsed = parseScannedQrPayload(manualCode);
     const searchCode = parsed.partCode.toLowerCase();
+
+    // STRICT CONTAINER BATCH VALIDATION FOR STOCK IN
+    if (mode === 'in' && manualCode.trim()) {
+      const validCheck = storageService.validateContainerQrTag(manualCode, parsed);
+      if (!validCheck.isValid) {
+        setCameraError(`⛔ ${validCheck.reason}`);
+        setMatchedPart(null);
+        return;
+      } else {
+        setCameraError(null);
+      }
+    }
 
     setScannedQty(parsed.qty);
     setScannedCont(parsed.contNumber);

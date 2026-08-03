@@ -79,14 +79,20 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
 
   // Real-time scanned QR tokens lookup
   const usedTokens = storageService.getUsedQrTokens();
-  const checkScanStatus = (tagId?: string, qrPayload?: string) => {
-    if (tagId && usedTokens[tagId]) {
-      return { isScanned: true, details: usedTokens[tagId] };
+  const checkScanStatus = (tagId?: string, qrPayload?: string, itemQty?: number) => {
+    const token = (tagId && usedTokens[tagId]) || (qrPayload && usedTokens[qrPayload]) || null;
+    if (token) {
+      const imported = token.importedQuantity !== undefined ? token.importedQuantity : (token.quantity || 0);
+      const total = token.quantity || itemQty || 0;
+      const isComplete = total > 0 && imported >= total;
+      return { 
+        isScanned: isComplete, 
+        importedQuantity: imported, 
+        totalQuantity: total, 
+        details: token 
+      };
     }
-    if (qrPayload && usedTokens[qrPayload]) {
-      return { isScanned: true, details: usedTokens[qrPayload] };
-    }
-    return { isScanned: false };
+    return { isScanned: false, importedQuantity: 0, totalQuantity: itemQty || 0 };
   };
 
   const saveBatchToStorage = (cNum: string, cDate: string, itemsList: ContainerImportItem[]) => {
@@ -98,6 +104,8 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
       quantity: item.quantity,
       contNumber: cNum,
       contDate: cDate,
+      supplier: item.supplier,
+      mfgDate: item.mfgDate,
       qrPayload: item.qrPayload,
       printCopies: item.printCopies || 1,
     }));
@@ -149,7 +157,7 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
       const updatedItems = parseResult.items.map((item) => ({
         ...item,
         contNumber: newCont,
-        qrPayload: `CONT_IN|${item.code}|${item.quantity}|${newCont}`,
+        qrPayload: `CONT_IN|${item.code}|${item.quantity}|${newCont}|${item.tagId}|${item.contDate || contDate}|${item.supplier || ''}|${item.mfgDate || ''}`,
       }));
       setParseResult({
         ...parseResult,
@@ -165,6 +173,7 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
       const updatedItems = parseResult.items.map((item) => ({
         ...item,
         contDate: newDate,
+        qrPayload: `CONT_IN|${item.code}|${item.quantity}|${contNumber}|${item.tagId}|${newDate}|${item.supplier || ''}|${item.mfgDate || ''}`,
       }));
       setParseResult({
         ...parseResult,
@@ -186,10 +195,12 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
         quantity: tag.quantity,
         contNumber: batch.contNumber,
         contDate: batch.contDate,
+        supplier: tag.supplier,
+        mfgDate: tag.mfgDate,
         matchedPart,
         isNewPart: !matchedPart,
         printCopies: tag.printCopies || 1,
-        qrPayload: tag.qrPayload || `CONT_IN|${tag.partCode}|${tag.quantity}|${batch.contNumber}|${tag.id}|${batch.contDate}`,
+        qrPayload: tag.qrPayload || `CONT_IN|${tag.partCode}|${tag.quantity}|${batch.contNumber}|${tag.id}|${batch.contDate}|${tag.supplier || ''}|${tag.mfgDate || ''}`,
       };
     });
 
@@ -581,6 +592,8 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
                           <th className="p-3 w-12 text-center">STT</th>
                           <th className="p-3">Mã VT</th>
                           <th className="p-3">Tên VT</th>
+                          <th className="p-3">Nhà Cung Cấp</th>
+                          <th className="p-3 text-center">Ngày SX</th>
                           <th className="p-3 text-center">ĐVT</th>
                           <th className="p-3 text-center font-black text-amber-700 bg-amber-50/60">
                             Số Lượng Cont (XUẤT)
@@ -599,6 +612,8 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
                               <td className="p-3 text-center font-semibold text-slate-400">{index + 1}</td>
                               <td className="p-3 font-mono font-bold text-emerald-800">{item.code}</td>
                               <td className="p-3 font-extrabold text-slate-900">{item.name}</td>
+                              <td className="p-3 font-medium text-slate-700">{item.supplier || '-'}</td>
+                              <td className="p-3 text-center font-mono font-bold text-amber-800">{item.mfgDate || '-'}</td>
                               <td className="p-3 text-center font-bold text-slate-600">{item.unit}</td>
                               <td className="p-3 text-center font-black text-base text-amber-700 bg-amber-50/30">
                                 {item.quantity.toLocaleString('vi-VN')}
@@ -880,8 +895,11 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
                       }}
                     >
                       {row.map((item, colIndex) => {
-                        const scanState = checkScanStatus(item.tagId || item.id, item.qrPayload);
+                        const scanState = checkScanStatus(item.tagId || item.id, item.qrPayload, item.quantity);
                         const isScanned = scanState.isScanned;
+                        const imported = scanState.importedQuantity || 0;
+                        const total = item.quantity || scanState.totalQuantity || 0;
+                        const isPartial = imported > 0 && imported < total;
 
                         return (
                           <div
@@ -889,6 +907,8 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
                             className={`flex-1 h-full rounded-md p-2 flex items-center justify-between overflow-hidden shadow-2xs relative border transition-all ${
                               isScanned
                                 ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-400/80 shadow-emerald-100'
+                                : isPartial
+                                ? 'bg-amber-50 border-amber-500 ring-2 ring-amber-400/80 shadow-amber-100'
                                 : 'bg-white border-slate-300'
                             }`}
                           >
@@ -897,11 +917,15 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
                               {isScanned ? (
                                 <span className="px-1.5 py-0.5 bg-emerald-600 text-white font-black text-[8px] rounded-xs shadow-xs flex items-center space-x-0.5 uppercase tracking-wider">
                                   <Check className="w-2.5 h-2.5 stroke-[3]" />
-                                  <span>ĐÃ SCAN</span>
+                                  <span>ĐÃ NHẬP ĐỦ ({imported}/{total})</span>
+                                </span>
+                              ) : isPartial ? (
+                                <span className="px-1.5 py-0.5 bg-amber-500 text-white font-black text-[8px] rounded-xs shadow-xs flex items-center space-x-0.5 uppercase tracking-wider">
+                                  <span>ĐANG NHẬP ({imported}/{total})</span>
                                 </span>
                               ) : (
                                 <span className="text-[8px] font-mono font-bold text-slate-400 bg-slate-100 px-1 rounded-xs border border-slate-200">
-                                  CHƯA QUÉT
+                                  CHƯA NHẬP KHO
                                 </span>
                               )}
                             </div>
@@ -932,11 +956,20 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
                                 </p>
                               </div>
 
+                              {(item.supplier || item.mfgDate) && (
+                                <div className="text-[9px] font-medium text-slate-600 truncate leading-tight">
+                                  {item.supplier && <span className="block truncate">NCC: <strong className="text-slate-800">{item.supplier}</strong></span>}
+                                  {item.mfgDate && <span className="text-amber-800 font-bold">NSX: {item.mfgDate}</span>}
+                                </div>
+                              )}
+
                               <div className="flex items-center justify-between text-[10px] font-extrabold border-t border-slate-200 pt-0.5">
-                                <span className="text-slate-500">{item.unit}</span>
-                                <span className={`px-1 rounded-xs font-mono ${isScanned ? 'bg-emerald-600 text-white font-black' : 'bg-amber-400 text-slate-950'}`}>
-                                  SL: {item.quantity.toLocaleString('vi-VN')}
-                                </span>
+                                <span className="text-slate-500">Đơn vị: {item.unit}</span>
+                                {imported > 0 && (
+                                  <span className={`px-1 rounded-xs font-mono text-[9px] ${isScanned ? 'bg-emerald-600 text-white font-black' : 'bg-amber-500 text-white font-bold'}`}>
+                                    Đã nhập: {imported.toLocaleString('vi-VN')} / {total.toLocaleString('vi-VN')}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1029,12 +1062,17 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
                                 style={{ width: '100%', height: '100%' }}
                               />
                             </div>
-                            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '2mm', marginTop: 'auto' }}>
-                                <div style={{ fontSize: `${conf.metaFontSize + 4}px`, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #ccc', paddingTop: '3mm' }}>
-                                    <span>{item.unit}</span>
-                                    <span style={{ fontFamily: 'monospace', fontWeight: '900', background: '#166534', color: 'white', padding: '1.5mm 4mm', borderRadius: '2mm' }}>SL: {item.quantity.toLocaleString('vi-VN')}</span>
+                            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1.5mm', marginTop: 'auto' }}>
+                                {item.supplier && (
+                                    <div style={{ fontSize: `${conf.metaFontSize + 2}px`, fontWeight: 'bold', color: '#1e293b', textAlign: 'left', wordBreak: 'break-word' }}>
+                                        NCC: {item.supplier}
+                                    </div>
+                                )}
+                                <div style={{ fontSize: `${conf.metaFontSize + 4}px`, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #ccc', paddingTop: '2mm' }}>
+                                    <span>ĐVT: {item.unit}</span>
+                                    {item.mfgDate && <span style={{ color: '#b45309' }}>NSX: {item.mfgDate}</span>}
                                 </div>
-                                <div style={{ fontSize: '12px', fontWeight: 'normal', color: '#64748b', textAlign: 'right' }}>
+                                <div style={{ fontSize: '11px', fontWeight: 'normal', color: '#64748b', textAlign: 'right' }}>
                                     Ngày in: {new Date().toLocaleDateString('vi-VN')}
                                 </div>
                             </div>
@@ -1056,16 +1094,21 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
                                 <span>{item.contDate || contDate}</span>
                               </div>
                               <div>
-                                <div style={{ fontSize: `${conf.nameFontSize}px`, fontWeight: '900', color: '#000', maxHeight: '11mm', overflow: 'hidden', wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
+                                <div style={{ fontSize: `${conf.nameFontSize}px`, fontWeight: '900', color: '#000', maxHeight: '8mm', overflow: 'hidden', wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                                   {item.name}
                                 </div>
-                                <div style={{ fontSize: `${conf.codeFontSize}px`, fontWeight: 'bold', fontFamily: 'monospace', color: '#065f46', marginTop: '0.5mm' }}>
+                                <div style={{ fontSize: `${conf.codeFontSize}px`, fontWeight: 'bold', fontFamily: 'monospace', color: '#065f46', marginTop: '0.2mm' }}>
                                   {item.code}
                                 </div>
                               </div>
+                              {item.supplier && (
+                                <div style={{ fontSize: `${Math.max(conf.metaFontSize - 1, 7)}px`, fontWeight: 'bold', color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  NCC: {item.supplier}
+                                </div>
+                              )}
                               <div style={{ fontSize: `${conf.metaFontSize}px`, fontWeight: 'bold', borderTop: '0.5px solid #ccc', paddingTop: '0.5mm', display: 'flex', justifyContent: 'space-between' }}>
-                                <span>{item.unit}</span>
-                                <span style={{ fontFamily: 'monospace', fontWeight: 'bold', backgroundColor: '#f59e0b', color: '#000', padding: '0 2px', borderRadius: '2px' }}>SL: {item.quantity.toLocaleString('vi-VN')}</span>
+                                <span>ĐVT: {item.unit}</span>
+                                {item.mfgDate && <span style={{ color: '#b45309' }}>NSX: {item.mfgDate}</span>}
                               </div>
                             </div>
                         </>

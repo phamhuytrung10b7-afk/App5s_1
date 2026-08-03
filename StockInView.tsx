@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Part, AppSettings } from './types';
 import { storageService } from './storage';
-import { ArrowDownLeft, CheckCircle2, AlertCircle, Package, Clock, User, FileText, QrCode, FileSpreadsheet, Zap } from 'lucide-react';
+import { ArrowDownLeft, CheckCircle2, AlertCircle, Package, Clock, User, FileText, QrCode, FileSpreadsheet, Zap, X, MapPin, Camera } from 'lucide-react';
 import { SearchableSelect, SelectOption } from './SearchableSelect';
 import { QrScannerModal } from './QrScannerModal';
 import { ContainerImportPrintModal } from './ContainerImportPrintModal';
 import { InlineQrScanner } from './InlineQrScanner';
+import { Html5Qrcode } from 'html5-qrcode';
 
 interface StockInViewProps {
   parts: Part[];
@@ -43,9 +44,178 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
     { id: string; partCode: string; partName: string; qty: number; unit: string; time: string; contNumber?: string; stockAfter: number }[]
   >([]);
 
+  const [partialImportModal, setPartialImportModal] = useState<{
+    isOpen: boolean;
+    part: Part;
+    tagId?: string;
+    contNumber?: string;
+    originalQty: number;
+    alreadyImported: number;
+  } | null>(null);
+  
+  const [importQtyInput, setImportQtyInput] = useState<number | ''>('');
+  const [selectedLocation, setSelectedLocation] = useState<string>('');
+  const [customLocation, setCustomLocation] = useState('');
+
+  // Location QR Camera / Gun Scanner States
+  const [isLocScannerActive, setIsLocScannerActive] = useState(false);
+  const [locScannerError, setLocScannerError] = useState<string | null>(null);
+  const [locScanGunInput, setLocScanGunInput] = useState('');
+
+  const qtyInputRef = useRef<HTMLInputElement>(null);
+  const locHtml5QrRef = useRef<Html5Qrcode | null>(null);
+
   const selectedPart = parts.find((p) => p.id === selectedPartId);
 
-  // Auto Stock In handler when scanning QR code
+  // Auto focus into Quantity Input when Partial Import Modal opens
+  useEffect(() => {
+    if (partialImportModal?.isOpen) {
+      setTimeout(() => {
+        qtyInputRef.current?.focus();
+      }, 150);
+    } else {
+      stopLocCamera();
+      setLocScanGunInput('');
+    }
+  }, [partialImportModal?.isOpen]);
+
+  const handleLocScanResult = (scannedText: string) => {
+    if (!scannedText.trim()) return;
+    let locName = scannedText.trim();
+    if (locName.includes('|')) {
+      const p = locName.split('|');
+      locName = p[p.length - 1].trim();
+    }
+
+    const foundInSettings = settings.locations?.find(
+      (l) => l.name.toLowerCase() === locName.toLowerCase()
+    );
+
+    if (foundInSettings) {
+      setSelectedLocation(foundInSettings.name);
+      setCustomLocation('');
+    } else {
+      setSelectedLocation('__custom__');
+      setCustomLocation(locName);
+    }
+
+    setMessage({
+      type: 'success',
+      text: `📍 Đã quét nhận diện vị trí kệ: "${locName}"`,
+    });
+    setLocScanGunInput('');
+  };
+
+  const startLocCamera = async () => {
+    setIsLocScannerActive(true);
+    setLocScannerError(null);
+
+    setTimeout(async () => {
+      try {
+        const html5QrCode = new Html5Qrcode('loc-qr-reader-container');
+        locHtml5QrRef.current = html5QrCode;
+
+        await html5QrCode.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 220, height: 220 } },
+          (decodedText) => {
+            handleLocScanResult(decodedText);
+            if (html5QrCode.isScanning) {
+              html5QrCode.stop().then(() => html5QrCode.clear()).catch(() => {});
+            }
+            setIsLocScannerActive(false);
+          },
+          () => {}
+        );
+      } catch (err: any) {
+        console.warn('Loc camera error:', err);
+        setLocScannerError('Không mở được camera trực tiếp. Vui lòng dùng súng quét USB/Bluetooth hoặc chọn vị trí kệ trong danh sách.');
+      }
+    }, 120);
+  };
+
+  const stopLocCamera = () => {
+    if (locHtml5QrRef.current && locHtml5QrRef.current.isScanning) {
+      locHtml5QrRef.current.stop().then(() => locHtml5QrRef.current?.clear()).catch(() => {});
+    }
+    setIsLocScannerActive(false);
+  };
+
+  // Submit handler for partial / batch import popup modal
+  const submitPartialImport = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!partialImportModal) return;
+    
+    const actualQty = typeof importQtyInput === 'number' ? importQtyInput : Number(importQtyInput);
+    if (!actualQty || actualQty <= 0) {
+      alert('Vui lòng điền số lượng thực tế cần nhập kho!');
+      return;
+    }
+    
+    const remaining = partialImportModal.originalQty - partialImportModal.alreadyImported;
+    if (actualQty > remaining) {
+      alert(`Số lượng nhập (${actualQty}) vượt quá số lượng còn lại trong Cont (${remaining})`);
+      return;
+    }
+
+    const targetLocation = (selectedLocation === '__custom__' ? customLocation : selectedLocation) || customLocation;
+    if (!targetLocation.trim()) {
+      alert('Vui lòng chọn hoặc quét vị trí / kệ đặt linh kiện!');
+      return;
+    }
+
+    const { part, tagId, contNumber, originalQty, alreadyImported } = partialImportModal;
+    const reasonText = `Nhập kho theo Cont ${contNumber}`;
+    
+    const tx = storageService.addStockIn({
+      partId: part.id,
+      quantity: actualQty,
+      date: new Date().toISOString(),
+      person: defaultPerson,
+      reasonOrPurpose: reasonText,
+      notes: tagId ? `Tem QR Cont: ${contNumber} (ID: ${tagId})` : `Tem QR Cont ${contNumber}`,
+      locationId: targetLocation.trim()
+    });
+    
+    // Save location to part
+    storageService.updatePart(part.id, { location: targetLocation.trim() });
+
+    const newImportedTotal = alreadyImported + actualQty;
+    if (tagId) {
+      storageService.markQrTokenAsUsed(tagId, {
+        partCode: part.code,
+        quantity: originalQty,
+        importedQuantity: newImportedTotal,
+        contNumber: contNumber || '',
+        person: defaultPerson,
+      });
+    }
+
+    const nowTimeStr = new Date().toLocaleTimeString('vi-VN');
+    setAutoScanHistory((prev) => [
+      {
+        id: `${part.id}-${Date.now()}`,
+        partCode: part.code,
+        partName: part.name,
+        qty: actualQty,
+        unit: part.unit,
+        time: nowTimeStr,
+        contNumber,
+        stockAfter: tx.stockAfter,
+      },
+      ...prev,
+    ]);
+
+    setMessage({
+      type: 'success',
+      text: `🎉 NHẬP KHO THÀNH CÔNG! Đã nhập +${actualQty} ${part.unit} [${part.code}] vào vị trí ${targetLocation.trim()} (Tiến độ Cont: ${newImportedTotal.toLocaleString('vi-VN')}/${originalQty.toLocaleString('vi-VN')} ${part.unit}). Tồn kho mới: ${tx.stockAfter.toLocaleString('vi-VN')} ${part.unit}.`,
+    });
+
+    stopLocCamera();
+    setPartialImportModal(null);
+    onSuccess();
+  };
+
   const handleAutoStockInFromQr = ({
     part,
     qty,
@@ -57,63 +227,59 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
     contNumber?: string;
     tagId?: string;
   }) => {
-    // ONLY automatically add stock if scanned code contains explicit Cont QR information (qty & contNumber)
+    // If not a Cont QR code with explicit quantity & contNumber, switch to manual tab
     if (!qty || qty <= 0 || !contNumber) {
       setSelectedPartId(part.id);
       setMainTab('manual');
       setMessage({
         type: 'success',
-        text: `ℹ️ Đã tìm thấy linh kiện [${part.code}] ${part.name}. Vui lòng nhập số lượng và bấm 'Xác Nhận Nhập Kho' (Chỉ Tem QR Cont tạo từ đợt Cont mới tự động cộng tồn kho theo tem).`,
+        text: `ℹ️ Đã tìm thấy linh kiện [${part.code}] ${part.name}. Vui lòng nhập số lượng và chọn vị trí kệ để hoàn tất phiếu nhập.`,
       });
       return;
     }
 
-    const qtyToIn = qty;
-    const reasonText = `Nhập kho theo Cont ${contNumber}`;
+    // STRICT CONTAINER BATCH CHECK
+    const tokenKey = tagId || `${contNumber}-${part.code}`;
+    const validCheck = storageService.validateContainerQrTag(tokenKey, {
+      partCode: part.code,
+      contNumber,
+      tagId,
+    });
 
-    try {
-      const tx = storageService.addStockIn({
-        partId: part.id,
-        quantity: qtyToIn,
-        date: new Date().toISOString(),
-        person: defaultPerson,
-        reasonOrPurpose: reasonText,
-        notes: tagId ? `Tem QR Cont ID: ${tagId}` : 'Quét mã tự động Tem Cont',
-      });
-
-      if (tagId) {
-        storageService.markQrTokenAsUsed(tagId, {
-          partCode: part.code,
-          quantity: qtyToIn,
-          contNumber: contNumber || '',
-          person: defaultPerson,
-        });
-      }
-
-      const nowTimeStr = new Date().toLocaleTimeString('vi-VN');
-      setAutoScanHistory((prev) => [
-        {
-          id: `${part.id}-${Date.now()}`,
-          partCode: part.code,
-          partName: part.name,
-          qty: qtyToIn,
-          unit: part.unit,
-          time: nowTimeStr,
-          contNumber,
-          stockAfter: tx.stockAfter,
-        },
-        ...prev,
-      ]);
-
+    if (!validCheck.isValid) {
       setMessage({
-        type: 'success',
-        text: `🎉 ĐÃ TỰ ĐỘNG CỘNG TỒN KHO THEO TEM CONT THÀNH CÔNG! +${qtyToIn} ${part.unit} cho [${part.code}] ${part.name} (Cont: ${contNumber}). Tồn kho thực tế mới: ${tx.stockAfter} ${part.unit}.`,
+        type: 'error',
+        text: `⛔ KHÔNG THỂ NHẬP KHO! ${validCheck.reason || 'Mã QR này không thuộc bất kỳ Danh mục Container nào đã khởi tạo trên hệ thống.'}`,
       });
-
-      onSuccess();
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err.message || 'Lỗi khi tự động cộng tồn kho' });
+      return;
     }
+
+    const usedCheck = storageService.isQrTokenUsed(tokenKey);
+    const totalQtyInCont = qty || usedCheck.quantity || validCheck.totalContQty || 0;
+    const alreadyImported = usedCheck.importedQuantity || 0;
+    const remainingQty = totalQtyInCont - alreadyImported;
+
+    if (remainingQty <= 0) {
+      setMessage({
+        type: 'error',
+        text: `⛔ Mã QR Tem Cont ${contNumber} linh kiện [${part.code}] đã được nhập ĐỦ số lượng (${alreadyImported.toLocaleString('vi-VN')}/${totalQtyInCont.toLocaleString('vi-VN')} ${part.unit})!`,
+      });
+      return;
+    }
+
+    // Open Popup Modal asking user for import quantity and location!
+    const defaultLoc = part.location && part.location !== 'Chưa phân vị trí' ? part.location : (settings.locations?.[0]?.name || '');
+    setSelectedLocation(defaultLoc);
+    setCustomLocation('');
+    setImportQtyInput(''); // Blank by default, user must enter actual quantity!
+    setPartialImportModal({
+      isOpen: true,
+      part,
+      tagId: tokenKey,
+      contNumber,
+      originalQty: totalQtyInCont,
+      alreadyImported,
+    });
   };
 
   // Part options for SearchableSelect
@@ -242,6 +408,256 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
             <AlertCircle className="w-5 h-5 mr-2 shrink-0 text-red-600" />
           )}
           <span>{message.text}</span>
+        </div>
+      )}
+
+      
+      {/* PARTIAL / BATCH IMPORT MODAL */}
+      {partialImportModal && partialImportModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[92vh] border border-slate-100 animate-in zoom-in-95">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-emerald-800 to-teal-900 text-white">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-emerald-500/20 rounded-lg flex items-center justify-center">
+                  <Package className="w-5 h-5 text-emerald-300" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm tracking-tight">Khai Báo Nhập Kho Linh Kiện (Tem Cont)</h3>
+                  <p className="text-[11px] text-emerald-200">Xác nhận số lượng thực tế & khoang kệ cất giữ</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setPartialImportModal(null)}
+                className="p-1 text-emerald-200 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={submitPartialImport} className="p-5 space-y-4 overflow-y-auto">
+              {/* Cont & Part Info Box */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-2">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="font-mono font-bold text-blue-700 text-xs bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200/60">
+                      {partialImportModal.part.code}
+                    </span>
+                    <h4 className="font-bold text-slate-900 text-sm mt-1">
+                      {partialImportModal.part.name}
+                    </h4>
+                  </div>
+                  <span className="text-[11px] font-bold text-slate-500 bg-slate-200/60 px-2.5 py-1 rounded-lg">
+                    ĐVT: {partialImportModal.part.unit}
+                  </span>
+                </div>
+
+                <div className="text-xs text-slate-600 flex items-center space-x-1">
+                  <span>Mã Container:</span>
+                  <strong className="font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md">
+                    {partialImportModal.contNumber}
+                  </strong>
+                </div>
+
+                {/* Progress Stats */}
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200/80 text-center text-xs">
+                  <div className="bg-white p-2 rounded-lg border border-slate-200">
+                    <span className="text-[10px] text-slate-400 block font-medium">Tổng trong Cont</span>
+                    <strong className="font-mono font-bold text-slate-800 text-sm">
+                      {partialImportModal.originalQty.toLocaleString('vi-VN')}
+                    </strong>
+                  </div>
+                  <div className="bg-white p-2 rounded-lg border border-slate-200">
+                    <span className="text-[10px] text-slate-400 block font-medium">Đã nhập kho</span>
+                    <strong className="font-mono font-bold text-emerald-600 text-sm">
+                      {partialImportModal.alreadyImported.toLocaleString('vi-VN')}
+                    </strong>
+                  </div>
+                  <div className="bg-amber-50 p-2 rounded-lg border border-amber-200">
+                    <span className="text-[10px] text-amber-700 block font-medium">Còn chưa nhập</span>
+                    <strong className="font-mono font-bold text-amber-900 text-sm">
+                      {(partialImportModal.originalQty - partialImportModal.alreadyImported).toLocaleString('vi-VN')}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Input Quantity */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-extrabold text-slate-800">
+                    1. Số lượng thực tế nhập đợt này ({partialImportModal.part.unit}) *
+                  </label>
+                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
+                    Tối đa: {(partialImportModal.originalQty - partialImportModal.alreadyImported).toLocaleString('vi-VN')} {partialImportModal.part.unit}
+                  </span>
+                </div>
+
+                <input
+                  ref={qtyInputRef}
+                  type="number"
+                  min="1"
+                  max={partialImportModal.originalQty - partialImportModal.alreadyImported}
+                  required
+                  autoFocus
+                  value={importQtyInput === '' ? '' : importQtyInput}
+                  onChange={(e) => setImportQtyInput(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full px-3.5 py-2.5 bg-amber-50/50 border-2 border-amber-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 rounded-xl text-base font-mono font-bold text-slate-900 outline-hidden transition-all"
+                  placeholder="👉 Tự điền số lượng kiểm đếm đợt này..."
+                />
+                <p className="text-[10px] text-slate-500 italic">
+                  * Hệ thống không tự điền sẵn. Vui lòng gõ số lượng thực tế kiểm đếm khi nhận hàng.
+                </p>
+
+                {/* Quick Presets */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                  <span className="text-[10px] text-slate-400 font-medium">Nhanh:</span>
+                  {[100, 200, 500, 1000].map((preset) => {
+                    const remaining = partialImportModal.originalQty - partialImportModal.alreadyImported;
+                    if (preset > remaining) return null;
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setImportQtyInput(preset)}
+                        className="px-2 py-0.5 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 border border-slate-200 rounded-md text-[11px] font-bold text-slate-600 transition-colors cursor-pointer"
+                      >
+                        +{preset}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => setImportQtyInput(partialImportModal.originalQty - partialImportModal.alreadyImported)}
+                    className="px-2 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-md text-[11px] font-bold transition-colors cursor-pointer ml-auto"
+                  >
+                    Nhập hết ({(partialImportModal.originalQty - partialImportModal.alreadyImported).toLocaleString('vi-VN')})
+                  </button>
+                </div>
+              </div>
+
+              {/* Location Select & Scan Section */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-extrabold text-slate-800">
+                    2. Vị trí / Kệ cất giữ linh kiện *
+                  </label>
+                  
+                  <button
+                    type="button"
+                    onClick={() => (isLocScannerActive ? stopLocCamera() : startLocCamera())}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center space-x-1 cursor-pointer ${
+                      isLocScannerActive
+                        ? 'bg-red-500 text-white hover:bg-red-600'
+                        : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs'
+                    }`}
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>{isLocScannerActive ? 'Tắt QR Kệ' : 'Quét QR Kệ (Camera)'}</span>
+                  </button>
+                </div>
+
+                {/* Inline Camera for Shelf QR Scanning */}
+                {isLocScannerActive && (
+                  <div className="p-3 bg-slate-900 rounded-xl space-y-2 text-white animate-in zoom-in-95">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold flex items-center text-emerald-400">
+                        <MapPin className="w-3.5 h-3.5 mr-1 animate-bounce" />
+                        Đưa mã QR trên Kệ vào ô vuông bên dưới
+                      </span>
+                      <button
+                        type="button"
+                        onClick={stopLocCamera}
+                        className="text-slate-400 hover:text-white"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div id="loc-qr-reader-container" className="overflow-hidden rounded-lg min-h-[180px] bg-black" />
+
+                    {locScannerError && (
+                      <p className="text-[11px] text-red-400 font-medium">{locScannerError}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Handheld barcode gun input for Rack QR */}
+                <div className="flex items-center space-x-2">
+                  <div className="relative flex-1">
+                    <MapPin className="w-4 h-4 text-emerald-600 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      value={locScanGunInput}
+                      onChange={(e) => {
+                        setLocScanGunInput(e.target.value);
+                        handleLocScanResult(e.target.value);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleLocScanResult(locScanGunInput);
+                        }
+                      }}
+                      placeholder="Hoặc bắn súng quét mã QR dán trên Kệ..."
+                      className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-hidden"
+                    />
+                  </div>
+                </div>
+
+                {/* Location Select Dropdown */}
+                <select
+                  value={selectedLocation}
+                  onChange={(e) => {
+                    setSelectedLocation(e.target.value);
+                    if (e.target.value !== '__custom__') {
+                      setCustomLocation('');
+                    }
+                  }}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 text-xs font-bold text-slate-800 outline-hidden"
+                >
+                  <option value="">-- Chọn khoang / kệ lưu trữ --</option>
+                  {settings.locations?.map((loc) => (
+                    <option key={loc.id} value={loc.name}>
+                      📍 {loc.name} {loc.description ? `(${loc.description})` : ''}
+                    </option>
+                  ))}
+                  <option value="__custom__">➕ Tự nhập vị trí mới...</option>
+                </select>
+
+                {/* Custom Location Text Input if custom selected or no predefined locations */}
+                {(selectedLocation === '__custom__' || (!settings.locations || settings.locations.length === 0)) && (
+                  <input
+                    type="text"
+                    value={customLocation}
+                    onChange={(e) => setCustomLocation(e.target.value)}
+                    placeholder="Tên kệ / khoang mới (VD: Kệ A1, Tủ B2)..."
+                    className="w-full mt-2 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-hidden"
+                    required
+                  />
+                )}
+              </div>
+              
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setPartialImportModal(null)}
+                  className="px-4 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs shadow-md transition-all flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>XÁC NHẬN NHẬP KHO</span>
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

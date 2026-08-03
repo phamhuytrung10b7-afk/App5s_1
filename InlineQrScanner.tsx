@@ -87,9 +87,18 @@ export const InlineQrScanner: React.FC<InlineQrScannerProps> = ({
       return;
     }
 
-    // Check duplicate scan for Stock In
-    const tokenToCheck = parsed.tagId || rawText.trim();
+    // STRICT CONTAINER BATCH VALIDATION FOR STOCK IN
     if (mode === 'in') {
+      const validCheck = storageService.validateContainerQrTag(rawText, parsed);
+      if (!validCheck.isValid) {
+        setErrorMsg(`⛔ ${validCheck.reason}`);
+        setLastScannedPart(null);
+        setLastScannedDetails(null);
+        return;
+      }
+
+      // Check if already fully imported
+      const tokenToCheck = parsed.tagId || rawText.trim();
       const usedCheck = storageService.isQrTokenUsed(tokenToCheck);
       if (usedCheck.isUsed) {
         setUsedInfo(usedCheck);

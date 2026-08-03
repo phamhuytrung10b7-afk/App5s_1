@@ -27,11 +27,18 @@ export interface Transaction {
   quantity: number;
   date: string; // YYYY-MM-DD or ISO string
   person: string; // Người thực hiện (Người nhập hoặc Người lấy)
+  locationId?: string; // Nơi lưu trữ thực tế
   productionOrder?: string; // Lệnh sản xuất (e.g. LSX-2026-088)
   reasonOrPurpose?: string; // Lý do nhập / Mục đích xuất
   notes?: string; // Ghi chú
   stockBefore: number; // Tồn trước giao dịch
   stockAfter: number; // Tồn cuối sau giao dịch
+}
+
+export interface WarehouseLocation {
+  id: string;
+  name: string; // e.g. A1, B2
+  description?: string;
 }
 
 export interface AppSettings {
@@ -44,6 +51,7 @@ export interface AppSettings {
   stockInReasons: string[]; // Danh sách lý do nhập kho
   stockOutPurposes: string[]; // Danh sách mục đích xuất kho
   productionOrders: string[]; // Danh sách mã lệnh sản xuất (LSX)
+  locations: WarehouseLocation[];
 }
 
 export interface ModelBOMItem {
@@ -66,6 +74,7 @@ export type ViewTab =
   | 'stock_in'
   | 'stock_out'
   | 'bin_card'
+  | 'warehouse_map'
   | 'reports'
   | 'settings';
 
@@ -77,9 +86,12 @@ export interface ContainerQrTag {
   quantity: number;
   contNumber: string;
   contDate: string;
-  qrPayload: string; // CONT_IN|MãVT|SL|MãCont|TagID|NgàyCont
+  supplier?: string; // Nhà cung cấp
+  mfgDate?: string; // Ngày sản xuất
+  qrPayload: string; // CONT_IN|MãVT|SL|MãCont|TagID|NgàyCont|Supplier|MfgDate
   printCopies: number;
   isUsed?: boolean;
+  importedQuantity?: number;
   scannedAt?: string;
   scannedBy?: string;
 }
@@ -117,8 +129,14 @@ export interface StockCheckRecord {
   location: string;
   expectedQuantity: number;
   actualQuantity: number;
+  actualStock?: number;
   discrepancy: number;
   reason?: string;
   checkDate: string;
   checkedBy: string;
+  systemStock?: number;
+  difference?: number;
+  performedBy?: string;
+  status?: string;
+  note?: string;
 }

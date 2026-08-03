@@ -33,6 +33,12 @@ export const initialSettings: AppSettings = {
     'LSX-2026-TDH09',
     'LSX-2026-BT044',
   ],
+  locations: [
+    { id: 'loc-1', name: 'Kệ A1', description: 'Khoang A - Dãy 1' },
+    { id: 'loc-2', name: 'Kệ A2', description: 'Khoang A - Dãy 2' },
+    { id: 'loc-3', name: 'Kệ B1', description: 'Khoang B - Dãy 1' },
+    { id: 'loc-4', name: 'Kệ B2', description: 'Khoang B - Dãy 2' },
+  ],
 };
 
 export const initialParts: Part[] = [

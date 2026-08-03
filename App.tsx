@@ -13,6 +13,7 @@ import { PartsListView } from './PartsListView';
 import { StockInView } from './StockInView';
 import { StockOutView } from './StockOutView';
 import { BinCardHistoryView } from './BinCardHistoryView';
+import { WarehouseMapView } from './WarehouseMapView';
 import { ReportsView } from './ReportsView';
 import { SettingsView } from './SettingsView';
 
@@ -153,6 +154,16 @@ export default function App() {
               parts={parts}
               transactions={transactions}
               onOpenBinCard={handleOpenBinCard}
+            />
+          )}
+
+          {currentTab === 'warehouse_map' && (
+            <WarehouseMapView
+              parts={parts}
+              settings={settings}
+              onUpdateSettings={setSettings}
+              onOpenBinCard={handleOpenBinCard}
+              onRefreshData={refreshData}
             />
           )}
 

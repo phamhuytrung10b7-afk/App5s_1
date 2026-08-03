@@ -10,10 +10,12 @@ export interface ContainerImportItem {
   quantity: number; // Cột XUẤT (Số lượng cont về)
   contNumber: string; // Mã Cont (e.g. GAOU7800407)
   contDate: string; // Ngày Cont (e.g. 16/07/2026)
+  supplier?: string; // Nhà cung cấp
+  mfgDate?: string; // Ngày sản xuất
   matchedPart?: Part; // Linh kiện có sẵn trong hệ thống
   isNewPart: boolean; // Linh kiện mới chưa có trong hệ thống
   printCopies: number; // Số tem cần in (Mặc định: 1)
-  qrPayload: string; // Embedded QR payload: CONT_IN|MãVT|SL|MãCont|TagID|NgàyCont
+  qrPayload: string; // Embedded QR payload: CONT_IN|MãVT|SL|MãCont|TagID|NgàyCont|Supplier|MfgDate
 }
 
 export interface ContainerImportResult {
@@ -208,12 +210,14 @@ export function parseContainerExcel(
     contDate = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()}`;
   }
 
-  // 2. Find header row with "Mã VT" / "Tên VT" / "ĐVT" / "XUẤT"
+  // 2. Find header row with "Mã VT" / "Tên VT" / "ĐVT" / "XUẤT" / "Nhà cung cấp" / "Ngày SX"
   let headerRowIndex = -1;
   let codeCol = -1;
   let nameCol = -1;
   let unitCol = -1;
   let qtyCol = -1;
+  let supplierCol = -1;
+  let mfgDateCol = -1;
 
   for (let r = range.s.r; r <= Math.min(range.s.r + 25, range.e.r); r++) {
     if (isRowHidden(worksheet, r)) continue;
@@ -255,6 +259,25 @@ export function parseContainerExcel(
       ) {
         qtyCol = c;
       }
+      if (
+        supplierCol === -1 &&
+        (cellText.includes('nhà cung cấp') ||
+          cellText.includes('ncc') ||
+          cellText.includes('supplier') ||
+          cellText.includes('hãng sx'))
+      ) {
+        supplierCol = c;
+      }
+      if (
+        mfgDateCol === -1 &&
+        (cellText.includes('ngày sx') ||
+          cellText.includes('ngày sản xuất') ||
+          cellText.includes('mfg') ||
+          cellText.includes('nsx') ||
+          cellText.includes('ngày đóng'))
+      ) {
+        mfgDateCol = c;
+      }
     }
 
     if (codeCol !== -1 && nameCol !== -1) {
@@ -286,6 +309,29 @@ export function parseContainerExcel(
     qtyCol = 14; // Default to Column O in DANH MỤC CONT standard template
   }
 
+  // Fallback for supplierCol (Col E / 4 in user's sheet) and mfgDateCol (Col F / 5 in user's sheet)
+  if (supplierCol === -1) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cellText = getCellData(worksheet, headerRowIndex, c).formatted.toLowerCase();
+      if (cellText.includes('nhà cung cấp') || cellText.includes('ncc') || cellText.includes('supplier')) {
+        supplierCol = c;
+        break;
+      }
+    }
+    if (supplierCol === -1 && range.e.c >= 4) supplierCol = 4; // Default Col E
+  }
+
+  if (mfgDateCol === -1) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cellText = getCellData(worksheet, headerRowIndex, c).formatted.toLowerCase();
+      if (cellText.includes('ngày sx') || cellText.includes('ngày sản xuất') || cellText.includes('nsx') || cellText.includes('mfg')) {
+        mfgDateCol = c;
+        break;
+      }
+    }
+    if (mfgDateCol === -1 && range.e.c >= 5) mfgDateCol = 5; // Default Col F
+  }
+
   const items: ContainerImportItem[] = [];
   let totalQuantity = 0;
   let newPartsCount = 0;
@@ -308,10 +354,26 @@ export function parseContainerExcel(
     const nameCell = getCellData(worksheet, r, nameCol);
     const unitCell = getCellData(worksheet, r, unitCol);
     const qtyCell = getCellData(worksheet, r, qtyCol);
+    const supplierCell = supplierCol !== -1 ? getCellData(worksheet, r, supplierCol) : { val: '', formatted: '', formula: '' };
+    const mfgDateCell = mfgDateCol !== -1 ? getCellData(worksheet, r, mfgDateCol) : { val: '', formatted: '', formula: '' };
 
     const rawCode = String(codeCell.formatted || codeCell.val || '').trim();
     const rawName = String(nameCell.formatted || nameCell.val || '').trim();
     const rawUnit = String(unitCell.formatted || unitCell.val || 'Cái').trim();
+    const rawSupplier = String(supplierCell.formatted || supplierCell.val || '').trim();
+    let rawMfgDate = String(mfgDateCell.formatted || mfgDateCell.val || '').trim();
+
+    // If mfgDate is numeric Excel date code, format it to DD/MM/YYYY
+    if (!rawMfgDate && typeof mfgDateCell.val === 'number') {
+      try {
+        const parsedDate = XLSX.SSF.parse_date_code(mfgDateCell.val);
+        if (parsedDate) {
+          rawMfgDate = `${parsedDate.d.toString().padStart(2, '0')}/${parsedDate.m.toString().padStart(2, '0')}/${parsedDate.y}`;
+        }
+      } catch {
+        // ignore
+      }
+    }
 
     // Ignore empty code/name or totals row
     if (!rawCode || !rawName) continue;
@@ -344,8 +406,8 @@ export function parseContainerExcel(
     const cleanCode = rawCode.replace(/[^a-zA-Z0-9]/g, '');
     const tagId = `TAG-${cleanCont}-${cleanCode}-${r}`;
 
-    // Build QR code embedded payload: CONT_IN|MãVT|SốLượng|SốCont|TagID|NgàyCont
-    const qrPayload = `CONT_IN|${rawCode}|${quantity}|${contNumber}|${tagId}|${contDate}`;
+    // Build QR code embedded payload: CONT_IN|MãVT|SốLượng|SốCont|TagID|NgàyCont|Supplier|MfgDate
+    const qrPayload = `CONT_IN|${rawCode}|${quantity}|${contNumber}|${tagId}|${contDate}|${rawSupplier}|${rawMfgDate}`;
 
     items.push({
       id: `cont-item-${r}-${Math.random().toString(36).substring(2, 6)}`,
@@ -356,6 +418,8 @@ export function parseContainerExcel(
       quantity,
       contNumber,
       contDate,
+      supplier: rawSupplier,
+      mfgDate: rawMfgDate,
       matchedPart,
       isNewPart,
       printCopies: 1, // Default 1 label per line item

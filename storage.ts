@@ -127,10 +127,12 @@ export const storageService = {
   addStockIn(params: {
     partId: string;
     quantity: number;
+    importedQuantity?: number;
     date: string;
     person: string;
     reasonOrPurpose?: string;
     notes?: string;
+    locationId?: string;
   }): Transaction {
     const part = this.getPartById(params.partId);
     if (!part) throw new Error('Linh kiện không tồn tại');
@@ -168,7 +170,7 @@ export const storageService = {
   // Perform Stock-Out with Anti-Negative Stock Rule!
   addStockOut(params: {
     partId: string;
-    quantity: number;
+    quantity: number; importedQuantity?: number;
     date: string;
     person: string;
     productionOrder?: string;
@@ -234,6 +236,10 @@ export const storageService = {
       unit: part.unit,
       location: part.location,
       checkDate: new Date().toISOString(),
+      expectedQuantity: systemStock,
+      actualQuantity: params.actualStock,
+      discrepancy: difference,
+      checkedBy: params.performedBy,
       systemStock,
       actualStock: params.actualStock,
       difference,
@@ -704,7 +710,7 @@ export const storageService = {
   },
 
   // Used QR Tokens (To prevent scanning the same Cont QR tag twice)
-  getUsedQrTokens(): Record<string, { scannedAt: string; scannedBy?: string; partCode: string; quantity: number; contNumber: string }> {
+  getUsedQrTokens(): Record<string, { scannedAt: string; scannedBy?: string; partCode: string; quantity: number; importedQuantity?: number; contNumber: string }> {
     const raw = localStorage.getItem(USED_QR_TOKENS_KEY);
     if (!raw) return {};
     try {
@@ -714,7 +720,7 @@ export const storageService = {
     }
   },
 
-  isQrTokenUsed(tokenOrPayload: string): { isUsed: boolean; scannedAt?: string; scannedBy?: string; partCode?: string; quantity?: number; contNumber?: string } {
+  isQrTokenUsed(tokenOrPayload: string): { isUsed: boolean; scannedAt?: string; scannedBy?: string; partCode?: string; quantity?: number; importedQuantity?: number; contNumber?: string } {
     if (!tokenOrPayload) return { isUsed: false };
     const tokens = this.getUsedQrTokens();
     
@@ -722,11 +728,12 @@ export const storageService = {
     if (tokens[tokenOrPayload]) {
       const info = tokens[tokenOrPayload];
       return {
-        isUsed: true,
+        isUsed: (info.importedQuantity || 0) >= (info.quantity || 0),
         scannedAt: info.scannedAt,
         scannedBy: info.scannedBy,
         partCode: info.partCode,
         quantity: info.quantity,
+        importedQuantity: info.importedQuantity || 0,
         contNumber: info.contNumber,
       };
     }
@@ -736,11 +743,12 @@ export const storageService = {
     if (tokens[keyStr]) {
       const info = tokens[keyStr];
       return {
-        isUsed: true,
+        isUsed: (info.importedQuantity || 0) >= (info.quantity || 0),
         scannedAt: info.scannedAt,
         scannedBy: info.scannedBy,
         partCode: info.partCode,
         quantity: info.quantity,
+        importedQuantity: info.importedQuantity || 0,
         contNumber: info.contNumber,
       };
     }
@@ -748,7 +756,7 @@ export const storageService = {
     return { isUsed: false };
   },
 
-  markQrTokenAsUsed(tokenOrPayload: string, details: { partCode: string; quantity: number; contNumber: string; person?: string }): void {
+  markQrTokenAsUsed(tokenOrPayload: string, details: { partCode: string; quantity: number; importedQuantity?: number; contNumber: string; person?: string }): void {
     if (!tokenOrPayload) return;
     const tokens = this.getUsedQrTokens();
     const nowStr = new Date().toLocaleString('vi-VN', {
@@ -764,6 +772,7 @@ export const storageService = {
       scannedBy: details.person || 'Thủ kho',
       partCode: details.partCode,
       quantity: details.quantity,
+      importedQuantity: details.importedQuantity || 0,
       contNumber: details.contNumber,
     };
 
@@ -778,6 +787,58 @@ export const storageService = {
     }
 
     localStorage.setItem(USED_QR_TOKENS_KEY, JSON.stringify(tokens));
+  },
+
+  // Validate if a scanned QR code belongs to a registered Container batch created on system
+  validateContainerQrTag(
+    rawText: string,
+    parsed: { partCode: string; contNumber?: string; tagId?: string }
+  ): {
+    isValid: boolean;
+    registeredTag?: ContainerQrTag;
+    batch?: ContainerBatch;
+    totalContQty?: number;
+    reason?: string;
+  } {
+    const batches = this.getContainerBatches();
+    if (batches.length === 0) {
+      return {
+        isValid: false,
+        reason: 'Hệ thống chưa có Danh mục Container nào được khởi tạo! Vui lòng vào mục "Excel Danh Mục Cont & In Mã QR" để tạo danh sách Cont trước.',
+      };
+    }
+
+    const rawStr = rawText ? rawText.trim() : '';
+    const tagIdStr = parsed.tagId?.trim() || '';
+    const contNumStr = parsed.contNumber?.trim().toLowerCase() || '';
+    const partCodeStr = parsed.partCode?.trim().toLowerCase() || '';
+
+    for (const batch of batches) {
+      for (const item of batch.items) {
+        // 1. Direct tagId match
+        if (tagIdStr && item.id === tagIdStr) {
+          return { isValid: true, registeredTag: item, batch, totalContQty: item.quantity };
+        }
+        // 2. Direct qrPayload match
+        if (item.qrPayload && rawStr && item.qrPayload.trim() === rawStr) {
+          return { isValid: true, registeredTag: item, batch, totalContQty: item.quantity };
+        }
+        // 3. Cont number + Part code match
+        if (
+          contNumStr &&
+          partCodeStr &&
+          item.contNumber.trim().toLowerCase() === contNumStr &&
+          item.partCode.trim().toLowerCase() === partCodeStr
+        ) {
+          return { isValid: true, registeredTag: item, batch, totalContQty: item.quantity };
+        }
+      }
+    }
+
+    return {
+      isValid: false,
+      reason: `Mã QR này (${parsed.partCode}${parsed.contNumber ? ` - Cont ${parsed.contNumber}` : ''}) KHÔNG nằm trong bất kỳ Danh mục Container nào đã khởi tạo trên hệ thống!`,
+    };
   },
 
   // FIFO Lot / Cont Batch Calculation
@@ -874,6 +935,7 @@ export const storageService = {
         id: lot.id,
         partId: part.id,
         partCode: part.code,
+        partName: part.name,
         contNumber: lot.contNumber,
         importDate: lot.importDate,
         originalQty: lot.originalQty,

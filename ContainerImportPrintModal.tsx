@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Part, AppSettings, ContainerBatch, ContainerQrTag } from './types';
 import { QRCodeSVG } from 'qrcode.react';
 import { printHtml } from './printHelper';
-import { getSavedPrintConfigs, savePrintConfigs, PrintLayout, AllPrintConfigs } from './printConfig';
+import { getSavedPrintConfigs, savePrintConfigs, defaultPrintConfigs, PrintLayout, AllPrintConfigs, PrintConfig } from './printConfig';
 
 import {
   FileSpreadsheet,
@@ -63,6 +63,25 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
   useEffect(() => {
     savePrintConfigs(printConfigs);
   }, [printConfigs]);
+
+  const handleConfigChange = (key: keyof PrintConfig, val: number) => {
+    setPrintConfigs((prev) => ({
+      ...prev,
+      [labelLayout]: {
+        ...prev[labelLayout],
+        [key]: Math.max(0, val),
+      },
+    }));
+  };
+
+  const handleResetCurrentConfig = () => {
+    setPrintConfigs((prev) => ({
+      ...prev,
+      [labelLayout]: { ...defaultPrintConfigs[labelLayout] },
+    }));
+  };
+
+  const activeConf = printConfigs[labelLayout];
  // 'double' = 73x22mm (2 tem / hàng), 'single' = 35x22mm
   const [searchTerm, setSearchTerm] = useState('');
   const [savedBatches, setSavedBatches] = useState<ContainerBatch[]>([]);
@@ -475,20 +494,94 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
           </div>
           
           {showSettings && (
-              <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl grid grid-cols-3 gap-4">
-                  <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Cỡ chữ Tên (px)</label>
-                      <input type="number" value={printConfigs[labelLayout].nameFontSize} onChange={(e) => setPrintConfigs({...printConfigs, [labelLayout]: {...printConfigs[labelLayout], nameFontSize: Number(e.target.value)}})} className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-md text-xs font-mono" />
-                  </div>
-                  <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Cỡ chữ Mã (px)</label>
-                      <input type="number" value={printConfigs[labelLayout].codeFontSize} onChange={(e) => setPrintConfigs({...printConfigs, [labelLayout]: {...printConfigs[labelLayout], codeFontSize: Number(e.target.value)}})} className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-md text-xs font-mono" />
-                  </div>
-                  <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Kích thước QR (mm)</label>
-                      <input type="number" value={printConfigs[labelLayout].qrSize} onChange={(e) => setPrintConfigs({...printConfigs, [labelLayout]: {...printConfigs[labelLayout], qrSize: Number(e.target.value)}})} className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-md text-xs font-mono" />
-                  </div>
+            <div className="mt-3 p-3 bg-white border border-emerald-200 rounded-2xl shadow-xs space-y-2">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <span className="font-extrabold text-slate-800 text-xs flex items-center space-x-1">
+                  <Settings2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Tuỳ Chỉnh Kích Thước Tem - Khổ {labelLayout === 'a7' ? 'A7 (74x105mm)' : labelLayout === 'double' ? 'Tem Đôi (73x22mm)' : 'Tem Đơn (35x22mm)'}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleResetCurrentConfig}
+                  className="text-[11px] text-amber-700 hover:text-amber-900 font-bold flex items-center space-x-1 cursor-pointer"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Khôi phục mặc định</span>
+                </button>
               </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                    CỠ CHỮ TÊN (PX)
+                  </label>
+                  <input
+                    type="number"
+                    min={6}
+                    max={36}
+                    value={activeConf.nameFontSize}
+                    onChange={(e) => handleConfigChange('nameFontSize', parseInt(e.target.value) || 8)}
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-800 outline-hidden focus:bg-white focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                    CỠ CHỮ MÃ (PX)
+                  </label>
+                  <input
+                    type="number"
+                    min={5}
+                    max={28}
+                    value={activeConf.codeFontSize}
+                    onChange={(e) => handleConfigChange('codeFontSize', parseInt(e.target.value) || 7)}
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-800 outline-hidden focus:bg-white focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                    CỠ CHỮ PHỤ (PX)
+                  </label>
+                  <input
+                    type="number"
+                    min={5}
+                    max={24}
+                    value={activeConf.metaFontSize}
+                    onChange={(e) => handleConfigChange('metaFontSize', parseInt(e.target.value) || 7)}
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-800 outline-hidden focus:bg-white focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                    KÍCH THƯỚC QR (MM)
+                  </label>
+                  <input
+                    type="number"
+                    min={8}
+                    max={80}
+                    value={activeConf.qrSize}
+                    onChange={(e) => handleConfigChange('qrSize', parseInt(e.target.value) || 12)}
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-800 outline-hidden focus:bg-white focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                    LỀ PADDING (MM)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={15}
+                    value={activeConf.padding}
+                    onChange={(e) => handleConfigChange('padding', parseInt(e.target.value) || 0)}
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-800 outline-hidden focus:bg-white focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+            </div>
           )}
 
         </div>
@@ -1016,7 +1109,6 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
                               {/* Footer */}
                               <div className="pt-1 border-t border-slate-300 flex items-center justify-between text-[11px] font-bold text-slate-800">
                                 <span>ĐVT: {item.unit}</span>
-                                <span className="text-emerald-800 font-extrabold">SL: {item.quantity.toLocaleString('vi-VN')}</span>
                               </div>
                             </div>
                           );
@@ -1218,7 +1310,6 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
 
                             <div style={{ fontSize: `${conf.metaFontSize + 1}px`, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1.5px solid #cbd5e1', paddingTop: '1.5mm', marginTop: '1mm' }}>
                               <span>ĐVT: {item.unit}</span>
-                              <span style={{ color: '#047857' }}>SL: {item.quantity.toLocaleString('vi-VN')}</span>
                             </div>
 
                             <div style={{ fontSize: '10px', fontWeight: 'normal', color: '#64748b', textAlign: 'right' }}>

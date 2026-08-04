@@ -51,8 +51,8 @@ export const WarehouseMapView: React.FC<WarehouseMapViewProps> = ({
       loc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (loc.description && loc.description.toLowerCase().includes(searchTerm.toLowerCase()));
     
-    const partsInLoc = parts.filter((p) => p.location === loc.name);
-    const isOccupied = partsInLoc.length > 0;
+    const partsAtLoc = storageService.getPartsAtLocation(parts, loc.name);
+    const isOccupied = partsAtLoc.length > 0;
 
     if (!matchesSearch) return false;
     if (filterMode === 'occupied') return isOccupied;
@@ -299,10 +299,10 @@ export const WarehouseMapView: React.FC<WarehouseMapViewProps> = ({
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {filteredLocations.map((loc) => {
-                  const partsInLoc = parts.filter((p) => p.location === loc.name);
+                  const partsAtLoc = storageService.getPartsAtLocation(parts, loc.name);
                   const isSelected = selectedLocation?.id === loc.id;
-                  const isOccupied = partsInLoc.length > 0;
-                  const totalStockInLoc = partsInLoc.reduce((acc, p) => acc + p.currentStock, 0);
+                  const isOccupied = partsAtLoc.length > 0;
+                  const totalStockInLoc = partsAtLoc.reduce((acc, item) => acc + item.locationQty, 0);
 
                   return (
                     <div
@@ -325,7 +325,7 @@ export const WarehouseMapView: React.FC<WarehouseMapViewProps> = ({
                               : 'bg-slate-200 text-slate-600'
                           }`}
                         >
-                          {isOccupied ? `${partsInLoc.length} LK` : 'Trống'}
+                          {isOccupied ? `${partsAtLoc.length} LK` : 'Trống'}
                         </span>
 
                         <button
@@ -355,8 +355,8 @@ export const WarehouseMapView: React.FC<WarehouseMapViewProps> = ({
 
                       {/* Stock summary */}
                       <div className="text-[11px] font-bold text-center border-t border-slate-200/60 pt-2 flex items-center justify-between text-slate-500">
-                        <span>Tổng tồn:</span>
-                        <span className="font-mono font-black text-slate-800">
+                        <span>Tồn tại kệ:</span>
+                        <span className="font-mono font-black text-emerald-700">
                           {totalStockInLoc.toLocaleString('vi-VN')}
                         </span>
                       </div>
@@ -389,52 +389,65 @@ export const WarehouseMapView: React.FC<WarehouseMapViewProps> = ({
               </div>
 
               {/* Parts inside selected location */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                  <span>Linh kiện lưu trữ ({partsInSelectedLoc.length}):</span>
-                  <span className="text-[11px] text-slate-400">
-                    {partsInSelectedLoc.reduce((sum, p) => sum + p.currentStock, 0).toLocaleString('vi-VN')} đơn vị
-                  </span>
-                </div>
+              {(() => {
+                const partsAtSelectedLoc = selectedLocation
+                  ? storageService.getPartsAtLocation(parts, selectedLocation.name)
+                  : [];
+                const totalUnitsOnShelf = partsAtSelectedLoc.reduce((sum, item) => sum + item.locationQty, 0);
 
-                {partsInSelectedLoc.length === 0 ? (
-                  <div className="p-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-400 text-xs">
-                    <Info className="w-6 h-6 mx-auto mb-1 text-slate-300" />
-                    Chưa có linh kiện nào được gán ở vị trí "{selectedLocation.name}".
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-                    {partsInSelectedLoc.map((part) => (
-                      <div
-                        key={part.id}
-                        className="p-3 bg-slate-50 hover:bg-blue-50/50 rounded-xl border border-slate-200 transition-all flex items-center justify-between text-xs group"
-                      >
-                        <div className="space-y-0.5 min-w-0 pr-2">
-                          <div className="font-mono font-bold text-blue-700 text-[11px]">{part.code}</div>
-                          <div className="font-semibold text-slate-800 truncate" title={part.name}>
-                            {part.name}
-                          </div>
-                          {part.spec && <div className="text-[10px] text-slate-400">{part.spec}</div>}
-                        </div>
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                      <span>Linh kiện lưu trữ ({partsAtSelectedLoc.length}):</span>
+                      <span className="text-[11px] text-emerald-800 font-extrabold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                        {totalUnitsOnShelf.toLocaleString('vi-VN')} đơn vị trên kệ
+                      </span>
+                    </div>
 
-                        <div className="text-right shrink-0">
-                          <div className="font-mono font-black text-emerald-600 text-sm">
-                            {part.currentStock.toLocaleString('vi-VN')} {part.unit}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => onOpenBinCard(part)}
-                            className="text-[10px] text-blue-600 hover:underline font-bold mt-0.5 inline-flex items-center space-x-0.5 cursor-pointer"
-                          >
-                            <span>Thẻ kho</span>
-                            <ArrowRight className="w-2.5 h-2.5" />
-                          </button>
-                        </div>
+                    {partsAtSelectedLoc.length === 0 ? (
+                      <div className="p-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-400 text-xs">
+                        <Info className="w-6 h-6 mx-auto mb-1 text-slate-300" />
+                        Chưa có linh kiện nào được gán ở vị trí "{selectedLocation.name}".
                       </div>
-                    ))}
+                    ) : (
+                      <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                        {partsAtSelectedLoc.map(({ part, locationQty }) => (
+                          <div
+                            key={part.id}
+                            className="p-3 bg-slate-50 hover:bg-blue-50/50 rounded-xl border border-slate-200 transition-all flex items-center justify-between text-xs group"
+                          >
+                            <div className="space-y-0.5 min-w-0 pr-2">
+                              <div className="font-mono font-bold text-blue-700 text-[11px]">{part.code}</div>
+                              <div className="font-semibold text-slate-800 truncate" title={part.name}>
+                                {part.name}
+                              </div>
+                              {part.currentStock !== locationQty && (
+                                <div className="text-[10px] text-slate-500 font-medium">
+                                  Tổng tồn các kệ: <span className="font-bold text-slate-700">{part.currentStock.toLocaleString('vi-VN')}</span> {part.unit}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="text-right shrink-0">
+                              <div className="font-mono font-black text-emerald-600 text-sm">
+                                {locationQty.toLocaleString('vi-VN')} {part.unit}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => onOpenBinCard(part)}
+                                className="text-[10px] text-blue-600 hover:underline font-bold mt-0.5 inline-flex items-center space-x-0.5 cursor-pointer"
+                              >
+                                <span>Thẻ kho</span>
+                                <ArrowRight className="w-2.5 h-2.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                );
+              })()}
             </div>
           ) : (
             <div className="bg-white p-6 rounded-2xl border border-slate-200 text-center text-slate-400 text-xs">

@@ -23,6 +23,7 @@ export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [settings, setSettings] = useState<AppSettings>(storageService.getSettings());
   const [searchTerm, setSearchTerm] = useState('');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Bin Card Modal State
   const [selectedBinCardPart, setSelectedBinCardPart] = useState<Part | null>(null);
@@ -84,12 +85,14 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-slate-100 font-sans text-slate-800 antialiased overflow-hidden">
-      {/* Left Navigation Sidebar */}
+      {/* Left Navigation Sidebar (Desktop + Mobile Drawer) */}
       <Sidebar
         currentTab={currentTab}
         onSelectTab={setCurrentTab}
         lowStockCount={lowStockCount}
         outOfStockCount={outOfStockCount}
+        isOpenMobile={isMobileMenuOpen}
+        onCloseMobile={() => setIsMobileMenuOpen(false)}
       />
 
       {/* Main Right Workspace */}
@@ -104,6 +107,7 @@ export default function App() {
           }}
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
+          onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
         />
 
         {/* View Router Body */}

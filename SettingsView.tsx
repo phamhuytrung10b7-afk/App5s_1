@@ -55,7 +55,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [selectedLocation, setSelectedLocation] = useState<{id: string; name: string; description?: string;} | null>(null);
 
   // Computed: get parts currently in the selected location
-  const partsInLocation = selectedLocation ? storageService.getParts().filter(p => p.location === selectedLocation.name) : [];
+  const partsInLocation = selectedLocation
+    ? storageService.getPartsAtLocation(storageService.getParts(), selectedLocation.name)
+    : [];
 
   const handleAddLocation = () => {
     if (!newLocationName.trim()) return;
@@ -748,11 +750,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                        </tr>
                      </thead>
                      <tbody className="text-xs divide-y divide-slate-100">
-                       {partsInLocation.map(p => (
+                       {partsInLocation.map(({ part: p, locationQty }) => (
                          <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                            <td className="p-3 font-mono font-bold text-slate-700">{p.code}</td>
                            <td className="p-3 text-slate-900 font-semibold">{p.name}</td>
-                           <td className="p-3 font-black text-emerald-600">{p.currentStock.toLocaleString('vi-VN')}</td>
+                           <td className="p-3 font-black text-emerald-600">{locationQty.toLocaleString('vi-VN')}</td>
                            <td className="p-3 text-slate-500">{p.unit}</td>
                          </tr>
                        ))}

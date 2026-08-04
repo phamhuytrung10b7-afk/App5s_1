@@ -179,29 +179,41 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
         const html5QrCode = new Html5Qrcode('qr-reader');
         html5QrcodeRef.current = html5QrCode;
 
-        const qrConfig = { fps: 10, qrbox: { width: 250, height: 250 } };
         const onScanSuccess = (decodedText: string) => {
           setManualCode(decodedText);
           stopCamera();
         };
 
-        try {
-          // Try environment (back) camera first
-          await html5QrCode.start(
-            { facingMode: 'environment' },
-            qrConfig,
-            onScanSuccess,
-            () => {}
+        const devices = await Html5Qrcode.getCameras().catch(() => []);
+        let cameraParam: any = { facingMode: 'environment' };
+
+        if (devices && devices.length > 0) {
+          const backCamera = devices.find((d) =>
+            d.label.toLowerCase().includes('back') ||
+            d.label.toLowerCase().includes('environment') ||
+            d.label.toLowerCase().includes('rear') ||
+            d.label.toLowerCase().includes('sau')
           );
+          cameraParam = backCamera ? backCamera.id : devices[devices.length - 1].id;
+        }
+
+        const qrConfig = {
+          fps: 15,
+          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+            const qrboxSize = Math.floor(minEdge * 0.75);
+            return { width: Math.max(qrboxSize, 180), height: Math.max(qrboxSize, 180) };
+          },
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true,
+          },
+        };
+
+        try {
+          await html5QrCode.start(cameraParam, qrConfig, onScanSuccess, () => {});
         } catch (envErr: any) {
           console.warn('Environment camera start attempt failed, trying user camera...', envErr);
-          // Fallback to user (front/default) camera
-          await html5QrCode.start(
-            { facingMode: 'user' },
-            qrConfig,
-            onScanSuccess,
-            () => {}
-          );
+          await html5QrCode.start({ facingMode: 'user' }, qrConfig, onScanSuccess, () => {});
         }
       } catch (err: any) {
         console.warn('Camera start issue caught:', err);

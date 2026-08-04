@@ -12,6 +12,7 @@ import {
   Boxes,
   ArrowDownCircle,
   ArrowUpCircle,
+  MapPin,
 } from 'lucide-react';
 
 interface BinCardHistoryViewProps {
@@ -176,6 +177,7 @@ export const BinCardHistoryView: React.FC<BinCardHistoryViewProps> = ({
                 <th className="p-3 text-right text-emerald-800 bg-emerald-50/70">Nhập (+)</th>
                 <th className="p-3 text-right text-blue-800 bg-blue-50/70">Xuất (-)</th>
                 <th className="p-3 text-right text-slate-900 bg-amber-50/70 font-black">Tồn cuối</th>
+                <th className="p-3 text-emerald-900 bg-emerald-50/70">Kệ / Vị trí</th>
                 <th className="p-3">Người thực hiện</th>
                 <th className="p-3">Lệnh sản xuất</th>
                 <th className="p-3 pr-5">Diễn giải / Ghi chú</th>
@@ -184,7 +186,7 @@ export const BinCardHistoryView: React.FC<BinCardHistoryViewProps> = ({
             <tbody className="divide-y divide-slate-100">
               {filteredTxs.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="p-10 text-center text-slate-400 italic">
+                  <td colSpan={10} className="p-10 text-center text-slate-400 italic">
                     Không có nhật ký giao dịch nào trong khoảng thời gian đã chọn.
                   </td>
                 </tr>
@@ -193,6 +195,8 @@ export const BinCardHistoryView: React.FC<BinCardHistoryViewProps> = ({
                   const part = parts.find((p) => p.id === tx.partId);
                   const isStockIn = tx.type === 'IN';
                   const isAudit = tx.type === 'AUDIT_ADJUSTMENT';
+
+                  const locName = tx.locationId || part?.location?.split(',')[0]?.split('(')[0]?.trim() || 'Kho chính';
 
                   return (
                     <tr
@@ -219,6 +223,12 @@ export const BinCardHistoryView: React.FC<BinCardHistoryViewProps> = ({
                       </td>
                       <td className="p-3 text-right font-black text-slate-900 bg-amber-50/30">
                         {tx.stockAfter.toLocaleString('vi-VN')} {tx.unit}
+                      </td>
+                      <td className="p-3 font-semibold text-slate-800 whitespace-nowrap">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-emerald-50 text-emerald-950 border border-emerald-300">
+                          <MapPin className="w-3.5 h-3.5 mr-1 text-emerald-600 shrink-0" />
+                          {locName}
+                        </span>
                       </td>
                       <td className="p-3 font-medium text-slate-700">{tx.person || '-'}</td>
                       <td className="p-3 font-mono font-semibold text-blue-600">

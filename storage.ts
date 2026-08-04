@@ -1,4 +1,4 @@
-import { Part, Transaction, StockCheckRecord, AppSettings, ContainerBatch, ContainerQrTag, FifoLot, ModelBOM, ModelBOMItem } from './types';
+import { Part, PartLocationStock, Transaction, StockCheckRecord, AppSettings, ContainerBatch, ContainerQrTag, FifoLot, ModelBOM, ModelBOMItem } from './types';
 import { initialParts, initialTransactions, initialSettings } from './sampleData';
 import * as XLSX from 'xlsx';
 
@@ -123,6 +123,75 @@ export const storageService = {
     return txs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   },
 
+  // Helper to get normalized location breakdown array for a part
+  getPartLocations(part: Part): PartLocationStock[] {
+    if (Array.isArray(part.locations) && part.locations.length > 0) {
+      return part.locations.map((l) => ({ ...l }));
+    }
+    if (part.location && part.location.trim()) {
+      const raw = part.location.trim();
+      if (raw.includes(',')) {
+        const segments = raw.split(',');
+        const result: PartLocationStock[] = [];
+        for (const seg of segments) {
+          const trimmed = seg.trim();
+          const match = trimmed.match(/^(.+?)\s*\(([\d\.\,\s]+)\)$/);
+          if (match) {
+            const name = match[1].trim();
+            const qty = parseFloat(match[2].replace(/\./g, '').replace(',', '.').trim()) || 0;
+            result.push({ locationName: name, quantity: qty });
+          } else if (trimmed) {
+            result.push({ locationName: trimmed, quantity: Math.max(0, part.currentStock) });
+          }
+        }
+        if (result.length > 0) return result;
+      } else {
+        const match = raw.match(/^(.+?)\s*\(([\d\.\,\s]+)\)$/);
+        if (match) {
+          const name = match[1].trim();
+          const qty = parseFloat(match[2].replace(/\./g, '').replace(',', '.').trim()) || part.currentStock;
+          return [{ locationName: name, quantity: qty }];
+        }
+        return [{ locationName: raw, quantity: part.currentStock }];
+      }
+    }
+    return [{ locationName: 'Kho chính', quantity: part.currentStock }];
+  },
+
+  formatPartLocationSummary(input: PartLocationStock[] | Part | undefined | null): string {
+    if (!input) return 'Chưa phân vị trí';
+    let locs: PartLocationStock[] = [];
+    if (Array.isArray(input)) {
+      locs = input;
+    } else if (typeof input === 'object') {
+      locs = this.getPartLocations(input as Part);
+    }
+    if (!Array.isArray(locs)) return 'Chưa phân vị trí';
+    const active = locs.filter((l) => l && typeof l.quantity === 'number' && l.quantity > 0);
+    if (active.length === 0) return 'Chưa phân vị trí';
+    if (active.length === 1) {
+      return active[0].locationName;
+    }
+    return active.map((l) => `${l.locationName} (${l.quantity.toLocaleString('vi-VN')})`).join(', ');
+  },
+
+  getPartStockAtLocation(part: Part, locationName: string): number {
+    const locs = this.getPartLocations(part);
+    const found = locs.find((l) => l.locationName.toLowerCase() === locationName.toLowerCase());
+    return found ? found.quantity : 0;
+  },
+
+  getPartsAtLocation(parts: Part[], locationName: string): { part: Part; locationQty: number }[] {
+    const result: { part: Part; locationQty: number }[] = [];
+    for (const part of parts) {
+      const qty = this.getPartStockAtLocation(part, locationName);
+      if (qty > 0) {
+        result.push({ part, locationQty: qty });
+      }
+    }
+    return result;
+  },
+
   // Perform Stock-In
   addStockIn(params: {
     partId: string;
@@ -140,8 +209,28 @@ export const storageService = {
     const stockBefore = part.currentStock;
     const stockAfter = stockBefore + params.quantity;
 
-    // Update part current stock
-    this.updatePart(part.id, { currentStock: stockAfter });
+    const targetLocName = params.locationId?.trim() || part.location?.split(',')[0]?.split('(')[0]?.trim() || 'Kho chính';
+
+    // Get current locations array and add stock to the specific location
+    const locs = this.getPartLocations(part);
+    const existingIndex = locs.findIndex(
+      (l) => l.locationName.toLowerCase() === targetLocName.toLowerCase()
+    );
+
+    if (existingIndex >= 0) {
+      locs[existingIndex].quantity += params.quantity;
+    } else {
+      locs.push({ locationName: targetLocName, quantity: params.quantity });
+    }
+
+    const newLocationSummary = this.formatPartLocationSummary(locs);
+
+    // Update part current stock & location breakdown
+    this.updatePart(part.id, {
+      currentStock: stockAfter,
+      locations: locs,
+      location: newLocationSummary,
+    });
 
     // Create transaction
     const newTx: Transaction = {
@@ -156,6 +245,7 @@ export const storageService = {
       person: params.person,
       reasonOrPurpose: params.reasonOrPurpose || 'Nhập kho',
       notes: params.notes || '',
+      locationId: targetLocName,
       stockBefore,
       stockAfter,
     };
@@ -170,12 +260,14 @@ export const storageService = {
   // Perform Stock-Out with Anti-Negative Stock Rule!
   addStockOut(params: {
     partId: string;
-    quantity: number; importedQuantity?: number;
+    quantity: number;
+    importedQuantity?: number;
     date: string;
     person: string;
     productionOrder?: string;
     reasonOrPurpose?: string;
     notes?: string;
+    locationId?: string;
   }): Transaction {
     const part = this.getPartById(params.partId);
     if (!part) throw new Error('Linh kiện không tồn tại');
@@ -187,8 +279,40 @@ export const storageService = {
     const stockBefore = part.currentStock;
     const stockAfter = stockBefore - params.quantity;
 
-    // Update part current stock
-    this.updatePart(part.id, { currentStock: stockAfter });
+    // Deduct stock from specific location or sequentially
+    const locs = this.getPartLocations(part);
+    let remainingToDeduct = params.quantity;
+
+    if (params.locationId) {
+      const targetLoc = params.locationId.trim();
+      const existing = locs.find((l) => l.locationName.toLowerCase() === targetLoc.toLowerCase());
+      if (existing) {
+        const deduct = Math.min(existing.quantity, remainingToDeduct);
+        existing.quantity -= deduct;
+        remainingToDeduct -= deduct;
+      }
+    }
+
+    if (remainingToDeduct > 0) {
+      for (const loc of locs) {
+        if (loc.quantity > 0) {
+          const deduct = Math.min(loc.quantity, remainingToDeduct);
+          loc.quantity -= deduct;
+          remainingToDeduct -= deduct;
+          if (remainingToDeduct <= 0) break;
+        }
+      }
+    }
+
+    const activeLocs = locs.filter((l) => l.quantity > 0);
+    const newLocationSummary = this.formatPartLocationSummary(activeLocs.length > 0 ? activeLocs : locs);
+
+    // Update part current stock & location breakdown
+    this.updatePart(part.id, {
+      currentStock: stockAfter,
+      locations: locs,
+      location: newLocationSummary,
+    });
 
     // Create transaction
     const newTx: Transaction = {
@@ -204,6 +328,7 @@ export const storageService = {
       productionOrder: params.productionOrder || '',
       reasonOrPurpose: params.reasonOrPurpose || 'Xuất sản xuất',
       notes: params.notes || '',
+      locationId: params.locationId,
       stockBefore,
       stockAfter,
     };
@@ -853,17 +978,29 @@ export const storageService = {
     const totalInQty = inTxs.reduce((sum, t) => sum + t.quantity, 0);
     const totalOutQty = outTxs.reduce((sum, t) => sum + t.quantity, 0);
 
-    const rawLots: { id: string; contNumber: string; importDate: string; originalQty: number; notes?: string }[] = [];
+    const defaultPartLoc = part.location?.split(',')[0]?.split('(')[0]?.trim() || 'Kho chính';
+
+    const rawLots: {
+      id: string;
+      contNumber: string;
+      locationName: string;
+      importDate: string;
+      originalQty: number;
+      notes?: string;
+      isInitialBaseline?: boolean;
+    }[] = [];
 
     // 1. Initial baseline stock lot (Lô Tồn Khởi Tạo #1)
     const initialBaselineQty = part.currentStock + totalOutQty - totalInQty;
     if (initialBaselineQty > 0) {
       rawLots.push({
         id: `init-lot-${part.id}`,
-        contNumber: 'Lô Tồn Khởi Tạo (Lô #1)',
+        contNumber: 'Lô Khởi Tạo',
+        locationName: defaultPartLoc,
         importDate: part.createdAt || '2026-01-01T00:00:00.000Z',
         originalQty: initialBaselineQty,
         notes: 'Dữ liệu tồn kho ban đầu',
+        isInitialBaseline: true,
       });
     }
 
@@ -879,24 +1016,29 @@ export const storageService = {
         if (match) contNum = match[1];
       }
 
-      const displayCont = contNum ? `Cont ${contNum}` : (tx.reasonOrPurpose || 'Lô Nhập Kho');
+      const txLoc = tx.locationId?.trim() || defaultPartLoc;
+
       rawLots.push({
         id: `tx-in-${tx.id}`,
-        contNumber: displayCont,
+        contNumber: contNum ? `Cont ${contNum}` : (tx.reasonOrPurpose || 'Nhập kho'),
+        locationName: txLoc,
         importDate: tx.date,
         originalQty: tx.quantity,
         notes: tx.notes || tx.reasonOrPurpose,
+        isInitialBaseline: false,
       });
     });
 
-    // Fallback if rawLots is somehow empty but part has currentStock
+    // Fallback if rawLots is empty but part has currentStock
     if (rawLots.length === 0 && part.currentStock > 0) {
       rawLots.push({
         id: `init-lot-${part.id}`,
-        contNumber: 'Lô Tồn Khởi Tạo (Lô #1)',
+        contNumber: 'Lô Khởi Tạo',
+        locationName: defaultPartLoc,
         importDate: part.createdAt || new Date().toISOString(),
         originalQty: part.currentStock + totalOutQty,
         notes: 'Dữ liệu tồn kho ban đầu',
+        isInitialBaseline: true,
       });
     }
 
@@ -937,12 +1079,14 @@ export const storageService = {
         partCode: part.code,
         partName: part.name,
         contNumber: lot.contNumber,
+        locationName: lot.locationName,
         importDate: lot.importDate,
         originalQty: lot.originalQty,
         consumedQty: consumed,
         remainingQty: remaining,
         status,
         notes: lot.notes,
+        isInitialBaseline: lot.isInitialBaseline,
       };
     });
 

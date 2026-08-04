@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Part, AppSettings } from './types';
 import { storageService } from './storage';
 import { ArrowUpRight, CheckCircle2, AlertTriangle, AlertCircle, Package, Clock, User, FileCode, FileText, QrCode, Zap } from 'lucide-react';
 import { SearchableSelect, SelectOption } from './SearchableSelect';
 import { QrScannerModal } from './QrScannerModal';
 import { InlineQrScanner } from './InlineQrScanner';
+import { StockOutScanModal } from './StockOutScanModal';
 
 interface StockOutViewProps {
   parts: Part[];
@@ -39,7 +40,14 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
-  const [mainTab, setMainTab] = useState<'scan' | 'model' | 'manual'>('model');
+  // Tab #1 Priority: Quét mã tự động
+  const [mainTab, setMainTab] = useState<'scan' | 'model' | 'manual'>('scan');
+
+  // Stock Out Scan Modal States
+  const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+  const [scannedPartForModal, setScannedPartForModal] = useState<Part | null>(null);
+  const [initialScanQty, setInitialScanQty] = useState<number>(1);
+  const [scanContNumber, setScanContNumber] = useState<string>('');
 
   // Model-based stock out states
   const [selectedBOMId, setSelectedBOMId] = useState<string>('');
@@ -52,8 +60,17 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
     { id: string; partCode: string; partName: string; qty: number; unit: string; time: string; stockAfter: number }[]
   >([]);
 
+  const [selectedOutLocation, setSelectedOutLocation] = useState<string>('');
+
   const selectedPart = parts.find((p) => p.id === selectedPartId);
   const isOverStock = selectedPart ? quantity > selectedPart.currentStock : false;
+
+  useEffect(() => {
+    if (selectedPart) {
+      const locs = storageService.getPartLocations(selectedPart);
+      setSelectedOutLocation(locs[0]?.locationName || '');
+    }
+  }, [selectedPartId]);
 
   // Execute quick stock out
   const handleQuickStockOut = (partToOut: Part, qtyToOut: number) => {
@@ -145,6 +162,7 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
         productionOrder: productionOrder.trim(),
         reasonOrPurpose: purpose.trim(),
         notes: notes.trim(),
+        locationId: selectedOutLocation || undefined,
       });
 
       setMessage({
@@ -178,6 +196,19 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
       <div className="flex border-b border-slate-200 bg-slate-100/80 p-1.5 rounded-2xl gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide">
         <button
           type="button"
+          onClick={() => setMainTab('scan')}
+          className={`px-4 py-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+            mainTab === 'scan'
+              ? 'bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-md border border-cyan-400/50'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <Zap className="w-4 h-4 text-cyan-300 animate-pulse" />
+          <span>1. QUÉT MÃ TỰ ĐỘNG (ƯU TIÊN SỐ 1)</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setMainTab('model')}
           className={`px-4 py-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center space-x-2 cursor-pointer ${
             mainTab === 'model'
@@ -186,20 +217,7 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
           }`}
         >
           <Package className="w-4 h-4" />
-          <span>1. XUẤT THEO MODEL (BOM)</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setMainTab('scan')}
-          className={`px-4 py-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center space-x-2 cursor-pointer ${
-            mainTab === 'scan'
-              ? 'bg-indigo-800 text-white shadow-md'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-          }`}
-        >
-          <Zap className="w-4 h-4 text-cyan-300 animate-pulse" />
-          <span>2. QUÉT MÃ TỰ ĐỘNG (NHANH)</span>
+          <span>2. XUẤT THEO MODEL (BOM)</span>
         </button>
 
         <button
@@ -472,7 +490,7 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
         </div>
       )}
 
-      {/* TAB 2: AUTO SCAN & QUICK STOCK OUT MODE */}
+      {/* TAB 1: AUTO SCAN & QUICK STOCK OUT MODE */}
       {mainTab === 'scan' && (
         <div className="space-y-6">
           <InlineQrScanner
@@ -481,19 +499,14 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
             onScanSuccess={({ part, qty, contNumber }) => {
               setScannedPartForQuickOut(part);
               setSelectedPartId(part.id);
-              if (qty && qty > 0) {
-                setQuickOutQty(qty);
-                setMessage({
-                  type: 'success',
-                  text: `Đã nhận diện linh kiện [${part.code}] ${part.name} từ Tem Cont ${contNumber || ''} (Số lượng tem: ${qty} ${part.unit}). Vui lòng kiểm tra và bấm 'XÁC NHẬN XUẤT KHO'.`,
-                });
-              } else {
-                setQuickOutQty(1);
-                setMessage({
-                  type: 'success',
-                  text: `Đã nhận diện linh kiện [${part.code}] ${part.name}. Vui lòng nhập số lượng cần xuất kho và bấm 'XÁC NHẬN XUẤT KHO'.`,
-                });
-              }
+              setScannedPartForModal(part);
+              setInitialScanQty(qty && qty > 0 ? qty : 1);
+              setScanContNumber(contNumber || '');
+              setIsScanModalOpen(true);
+              setMessage({
+                type: 'success',
+                text: `🎉 Đã nhận diện mã linh kiện [${part.code}] ${part.name}! Mở bảng POPUP xác nhận số lượng & quét đối soát vị trí kệ FIFO.`,
+              });
             }}
           />
 
@@ -734,6 +747,27 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Location / Shelf Selection */}
+          {selectedPart && (
+            <div className="col-span-1 md:col-span-2 bg-blue-50/60 p-3.5 rounded-xl border border-blue-200">
+              <label className="block text-xs font-bold text-blue-900 mb-1 flex items-center justify-between">
+                <span>📍 Chọn Kệ / Vị Trí Xuất Hàng (Kiểm Soát Tồn Theo Kệ):</span>
+                <span className="text-[11px] font-normal text-blue-700">Linh kiện có ở {storageService.getPartLocations(selectedPart).length} vị trí</span>
+              </label>
+              <select
+                value={selectedOutLocation}
+                onChange={(e) => setSelectedOutLocation(e.target.value)}
+                className="w-full px-3 py-2 border border-blue-300 rounded-xl text-xs font-bold bg-white text-slate-800 focus:ring-2 focus:ring-blue-500 outline-hidden"
+              >
+                {storageService.getPartLocations(selectedPart).map((loc, i) => (
+                  <option key={i} value={loc.locationName}>
+                    📍 {loc.locationName} — Tồn tại kệ này: {loc.quantity.toLocaleString('vi-VN')} {selectedPart.unit}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Quantity */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -844,6 +878,58 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
         onSelectPart={(p) => {
           setSelectedPartId(p.id);
           setIsQrModalOpen(false);
+        }}
+      />
+
+      {/* POPUP Modal for Auto-Scan Stock Out Verification */}
+      <StockOutScanModal
+        isOpen={isScanModalOpen}
+        onClose={() => setIsScanModalOpen(false)}
+        part={scannedPartForModal}
+        initialQty={initialScanQty}
+        contNumber={scanContNumber}
+        settings={settings}
+        defaultPerson={person}
+        defaultLSX={productionOrder}
+        defaultPurpose={purpose}
+        onConfirm={({ part, qty, location, person: pPerson, productionOrder: pLSX, purpose: pPurpose, notes: pNotes }) => {
+          try {
+            const tx = storageService.addStockOut({
+              partId: part.id,
+              quantity: qty,
+              date: new Date().toISOString(),
+              person: pPerson,
+              productionOrder: pLSX,
+              reasonOrPurpose: pPurpose,
+              notes: `${pNotes} [📍 Kệ ${location}]`,
+              locationId: location,
+            });
+
+            const nowTimeStr = new Date().toLocaleTimeString('vi-VN');
+            setAutoScanHistory((prev) => [
+              {
+                id: `${part.id}-${Date.now()}`,
+                partCode: part.code,
+                partName: part.name,
+                qty,
+                unit: part.unit,
+                time: nowTimeStr,
+                stockAfter: tx.stockAfter,
+              },
+              ...prev,
+            ]);
+
+            setMessage({
+              type: 'success',
+              text: `🎉 ĐÃ XUẤT KHO THÀNH CÔNG! -${qty} ${tx.unit} cho [${tx.partCode}] ${tx.partName} từ [${location}]. Tồn kho còn lại: ${tx.stockAfter} ${tx.unit}.`,
+            });
+
+            setIsScanModalOpen(false);
+            setScannedPartForModal(null);
+            onSuccess();
+          } catch (err: any) {
+            setMessage({ type: 'error', text: err.message || 'Lỗi khi xuất kho' });
+          }
         }}
       />
     </div>

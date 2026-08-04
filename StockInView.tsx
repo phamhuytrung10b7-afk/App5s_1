@@ -67,6 +67,14 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
 
   const selectedPart = parts.find((p) => p.id === selectedPartId);
 
+  useEffect(() => {
+    if (selectedPart) {
+      const locs = storageService.getPartLocations(selectedPart);
+      const defaultName = locs[0]?.locationName || selectedPart.location?.split(',')[0]?.split('(')[0]?.trim() || settings.locations?.[0]?.name || 'Kho chính';
+      setSelectedLocation(defaultName);
+    }
+  }, [selectedPartId]);
+
   // Auto focus into Quantity Input when Partial Import Modal opens
   useEffect(() => {
     if (partialImportModal?.isOpen) {
@@ -306,6 +314,7 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
     }
 
     try {
+      const targetLoc = selectedLocation || customLocation;
       const tx = storageService.addStockIn({
         partId: selectedPartId,
         quantity: Number(quantity),
@@ -313,6 +322,7 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
         person: person.trim(),
         reasonOrPurpose: reason.trim(),
         notes: notes.trim(),
+        locationId: targetLoc ? targetLoc.trim() : undefined,
       });
 
       // If imported via Cont QR Code, mark this tag as USED so it can NEVER be scanned twice!
@@ -761,6 +771,27 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Location / Shelf Selector */}
+          {selectedPart && (
+            <div className="col-span-1 md:col-span-2 bg-emerald-50/60 p-3 rounded-xl border border-emerald-200">
+              <label className="block text-xs font-bold text-emerald-900 mb-1 flex items-center justify-between">
+                <span>📍 Chọn Kệ / Vị Trí Nhập Hàng (Ghi Nhận Thẻ Kho Cụ Thể):</span>
+                <span className="text-[11px] font-normal text-emerald-700">Tự động cộng tồn kho cho kệ được chọn</span>
+              </label>
+              <select
+                value={selectedLocation}
+                onChange={(e) => setSelectedLocation(e.target.value)}
+                className="w-full px-3 py-2 border border-emerald-300 rounded-xl text-xs font-bold bg-white text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-hidden"
+              >
+                {(settings.locations || []).map((loc) => (
+                  <option key={loc.id} value={loc.name}>
+                    📍 {loc.name} {loc.description ? `(${loc.description})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Quantity */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">

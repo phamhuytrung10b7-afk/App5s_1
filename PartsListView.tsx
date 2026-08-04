@@ -402,10 +402,10 @@ export const PartsListView: React.FC<PartsListViewProps> = ({
                       </td>
 
                       {/* Location */}
-                      <td className="p-3 font-medium text-slate-700 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2 py-1 bg-slate-100 border border-slate-200 rounded-md text-[11px]">
-                          <MapPin className="w-3 h-3 mr-1 text-slate-500" />
-                          {p.location}
+                      <td className="p-3 font-medium text-slate-700 max-w-[180px]">
+                        <span className="inline-flex items-center px-2 py-1 bg-slate-100 border border-slate-200 rounded-md text-[11px] leading-tight" title={storageService.formatPartLocationSummary(p)}>
+                          <MapPin className="w-3 h-3 mr-1 text-slate-500 shrink-0" />
+                          <span className="truncate">{storageService.formatPartLocationSummary(p)}</span>
                         </span>
                       </td>
 
@@ -439,16 +439,20 @@ export const PartsListView: React.FC<PartsListViewProps> = ({
                           }
 
                           if (fifoNext) {
+                            const displayName = fifoNext.isInitialBaseline
+                              ? fifoNext.contNumber
+                              : `📍 ${fifoNext.locationName || 'Kệ kho'}`;
+
                             return (
-                              <div className="space-y-1 group/fifo cursor-pointer" title="Bấm để xem chi tiết mốc Cont (FIFO)">
+                              <div className="space-y-1 group/fifo cursor-pointer" title="Bấm để xem chi tiết mốc Kệ (FIFO)">
                                 <div className="inline-flex items-center px-2 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg text-[11px] text-amber-950 font-bold transition-all shadow-2xs">
                                   <Zap className="w-3 h-3 mr-1 text-amber-600 shrink-0 animate-pulse" />
-                                  <span className="truncate max-w-[110px]">{fifoNext.contNumber}</span>:
+                                  <span className="truncate max-w-[120px]">{displayName}</span>:
                                   <span className="ml-1 text-amber-900 font-black">{fifoNext.remainingQty.toLocaleString('vi-VN')} {p.unit}</span>
                                 </div>
                                 {activeCount > 1 && (
                                   <p className="text-[10px] text-indigo-700 font-bold hover:underline block">
-                                    + {activeCount - 1} mốc Cont khác
+                                    + {activeCount - 1} mốc Kệ khác
                                   </p>
                                 )}
                               </div>

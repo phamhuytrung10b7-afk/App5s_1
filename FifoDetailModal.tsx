@@ -65,16 +65,24 @@ export const FifoDetailModal: React.FC<FifoDetailModalProps> = ({ isOpen, onClos
                   <span>ƯU TIÊN XUẤT HÀNG (#1 FIFO)</span>
                 </span>
                 <span className="px-2 py-0.5 bg-amber-200 text-amber-900 text-[10px] font-black rounded-md">
-                  LÔ CŨ NHẤT CÒN TỒN
+                  KỆ CỦ NHẤT CÒN TỒN
                 </span>
               </div>
 
               {fifoNextLot ? (
                 <div className="mt-1">
-                  <p className="text-sm font-black text-amber-950">
-                    Lấy từ: <strong className="text-amber-800 text-base">{fifoNextLot.contNumber}</strong>
+                  <p className="text-sm font-black text-amber-950 flex flex-wrap items-center gap-1.5">
+                    <span>Lấy từ:</span>
+                    <strong className="text-amber-900 text-base font-extrabold bg-amber-200/80 px-2.5 py-0.5 rounded-lg border border-amber-300">
+                      📍 {fifoNextLot.isInitialBaseline ? 'Lô Tồn Khởi Tạo (Lô #1)' : (fifoNextLot.locationName || 'Kệ kho')}
+                    </strong>
+                    {!fifoNextLot.isInitialBaseline && fifoNextLot.contNumber && (
+                      <span className="text-xs font-semibold text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded-md border border-amber-200">
+                        (Ghi chú: {fifoNextLot.contNumber})
+                      </span>
+                    )}
                   </p>
-                  <p className="text-xs text-amber-900 mt-0.5">
+                  <p className="text-xs text-amber-900 mt-1">
                     Ngày nhập: {new Date(fifoNextLot.importDate).toLocaleDateString('vi-VN')} • Còn tồn trong mốc này:{' '}
                     <strong className="text-amber-950 font-black text-sm">{fifoNextLot.remainingQty.toLocaleString('vi-VN')} {part.unit}</strong>
                   </p>
@@ -89,10 +97,10 @@ export const FifoDetailModal: React.FC<FifoDetailModalProps> = ({ isOpen, onClos
           <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 space-y-1">
             <p className="font-bold flex items-center space-x-1.5 text-blue-950">
               <AlertCircle className="w-4 h-4 text-blue-600 shrink-0" />
-              <span>HƯỚNG DẪN QUY TRÌNH XUẤT KHO THEO FIFO:</span>
+              <span>QUY TRÌNH XUẤT KHO THEO KỆ FIFO (NHẬP TRƯỚC XUẤT TRƯỚC):</span>
             </p>
             <p className="text-blue-800 leading-relaxed">
-              Thủ kho bắt buộc xuất các thùng/khay có thẻ nhãn thuộc **mốc Cont cũ nhất (#1 FIFO)** trước. Khi lô cũ xuất hết (0 {part.unit}), hệ thống sẽ tự động chuyển ưu tiên sang mốc Cont kế tiếp.
+              Thủ kho ưu tiên lấy vật tư từ <strong>Kệ nhập trước (#1 FIFO)</strong> theo thời gian. Thông tin số Cont được đính kèm làm ghi chú phụ để đối soát. Khi mốc Kệ cũ xuất hết (0 {part.unit}), hệ thống tự động chuyển ưu tiên sang Kệ tiếp theo.
             </p>
           </div>
 
@@ -101,18 +109,24 @@ export const FifoDetailModal: React.FC<FifoDetailModalProps> = ({ isOpen, onClos
             <h4 className="font-extrabold text-xs text-slate-800 uppercase tracking-wider flex items-center justify-between">
               <span className="flex items-center space-x-1.5">
                 <Clock className="w-4 h-4 text-indigo-600" />
-                <span>DANH SÁCH CÁC MỐC NHẬP CONT ({fifoLots.length} mốc)</span>
+                <span>DANH SÁCH MỐC NHẬP THEO KỆ / FIFO ({fifoLots.length} mốc)</span>
               </span>
               <span className="text-[11px] font-normal text-slate-500">Thứ tự từ cũ nhất đến mới nhất</span>
             </h4>
 
             {fifoLots.length === 0 ? (
-              <p className="text-xs text-slate-500 italic text-center py-6">Chưa có lịch sử mốc nhập Cont nào cho linh kiện này</p>
+              <p className="text-xs text-slate-500 italic text-center py-6">Chưa có lịch sử mốc nhập kho nào cho linh kiện này</p>
             ) : (
               <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
                 {fifoLots.map((lot, idx) => {
                   const isFifoNext = lot.status === 'FIFO_NEXT';
                   const isDepleted = lot.status === 'DEPLETED';
+
+                  const titleText = lot.isInitialBaseline
+                    ? 'Lô Tồn Khởi Tạo (Lô #1)'
+                    : `📍 ${lot.locationName || 'Kệ kho'}`;
+
+                  const showContNote = !lot.isInitialBaseline && lot.contNumber;
 
                   return (
                     <div
@@ -128,7 +142,7 @@ export const FifoDetailModal: React.FC<FifoDetailModalProps> = ({ isOpen, onClos
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center space-x-2.5">
                           <div
-                            className={`w-7 h-7 rounded-lg flex items-center justify-center font-black text-xs ${
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center font-black text-xs shrink-0 ${
                               isFifoNext
                                 ? 'bg-amber-400 text-slate-950'
                                 : isDepleted
@@ -139,10 +153,17 @@ export const FifoDetailModal: React.FC<FifoDetailModalProps> = ({ isOpen, onClos
                             #{idx + 1}
                           </div>
                           <div>
-                            <div className="flex items-center space-x-2">
-                              <span className="font-bold text-slate-900 text-xs sm:text-sm">
-                                {lot.contNumber}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-extrabold text-slate-900 text-xs sm:text-sm">
+                                {titleText}
                               </span>
+
+                              {showContNote && (
+                                <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[11px] font-semibold rounded-md border border-slate-200">
+                                  (Ghi chú: {lot.contNumber})
+                                </span>
+                              )}
+
                               {isFifoNext && (
                                 <span className="px-2 py-0.5 bg-amber-400 text-slate-950 text-[10px] font-black rounded-md animate-pulse">
                                   #1 XUẤT TRƯỚC (FIFO)
@@ -155,7 +176,7 @@ export const FifoDetailModal: React.FC<FifoDetailModalProps> = ({ isOpen, onClos
                               )}
                             </div>
                             <p className="text-[11px] text-slate-500 mt-0.5">
-                              Ngày nhập: {new Date(lot.importDate).toLocaleDateString('vi-VN')} {lot.notes ? `• ${lot.notes}` : ''}
+                              Vị trí: <strong className="text-slate-700">{lot.locationName || 'Kho chính'}</strong> • Ngày nhập: {new Date(lot.importDate).toLocaleDateString('vi-VN')} {lot.notes ? `• ${lot.notes}` : ''}
                             </p>
                           </div>
                         </div>

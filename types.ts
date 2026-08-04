@@ -1,14 +1,20 @@
 export type TransactionType = 'IN' | 'OUT' | 'AUDIT_ADJUSTMENT';
 
+export interface PartLocationStock {
+  locationName: string; // e.g. "Kệ A1"
+  quantity: number;     // e.g. 2000
+}
+
 export interface Part {
   id: string;
   code: string; // Mã linh kiện (e.g. LK-RES-10K)
   name: string; // Tên linh kiện
   description: string; // Mô tả
   imageUrl?: string; // Ảnh linh kiện
-  location: string; // Vị trí lưu (e.g. Kệ A1-02, Khay 3)
+  location: string; // Vị trí lưu tổng hợp (e.g. Kệ A1 (2000), Kệ A2 (1647))
+  locations?: PartLocationStock[]; // Chi tiết phân bổ tồn kho theo từng kệ
   unit: string; // Đơn vị (e.g. Cái, Bộ, Cuộn, Con, Kg...)
-  currentStock: number; // Tồn hiện tại
+  currentStock: number; // Tổng tồn hiện tại
   minStock: number; // Tồn tối thiểu
   barcode: string; // Mã vạch
   qrCode: string; // Mã QR
@@ -111,13 +117,15 @@ export interface FifoLot {
   partId: string;
   partCode: string;
   partName: string;
-  contNumber: string; // Số Cont hoặc tên lô nhập
+  contNumber: string; // Số Cont hoặc tên ghi chú Cont
+  locationName?: string; // Tên Kệ / Vị trí nhập kho (e.g. Kệ A1)
   importDate: string; // Ngày nhập kho
   originalQty: number; // Số lượng nhập ban đầu
   consumedQty: number; // Số lượng đã xuất
   remainingQty: number; // Số lượng còn tồn hiện tại trong mốc này
   status: 'FIFO_NEXT' | 'WAITING' | 'DEPLETED'; // FIFO_NEXT = Ưu tiên xuất trước #1
   notes?: string;
+  isInitialBaseline?: boolean; // Đánh dấu lô tồn khởi tạo ban đầu
 }
 
 export interface StockCheckRecord {

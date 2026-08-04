@@ -62,7 +62,10 @@ export const ElectronicBinCardModal: React.FC<ElectronicBinCardModalProps> = ({
     });
   }, [allHistory, dateFrom, dateTo, filterText]);
 
-  // Totals calculation
+  // Calculate part multi-location breakdown
+  const partLocations = useMemo(() => {
+    return storageService.getPartLocations(part);
+  }, [part]);
   const totalIn = useMemo(() => {
     return filteredHistory
       .filter((t) => t.type === 'IN')
@@ -209,12 +212,25 @@ export const ElectronicBinCardModal: React.FC<ElectronicBinCardModalProps> = ({
                 </p>
               </div>
 
-              <div>
-                <p className="text-xs text-slate-500 font-medium">Vị trí trên kệ:</p>
-                <p className="text-sm font-semibold text-slate-800 flex items-center mt-0.5">
-                  <MapPin className="w-4 h-4 mr-1 text-emerald-600" />
-                  {part.location}
-                </p>
+              <div className="col-span-1 md:col-span-2">
+                <p className="text-xs text-slate-500 font-medium mb-1">Vị trí trên kệ (Các kệ đang chứa linh kiện):</p>
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  {partLocations.map((loc, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-900 border border-emerald-300 shadow-2xs"
+                    >
+                      <MapPin className="w-3.5 h-3.5 mr-1 text-emerald-600 shrink-0" />
+                      <span>{loc.locationName}</span>
+                      <span className="ml-1.5 text-[11px] font-mono text-emerald-950 bg-emerald-200/90 px-1.5 py-0.5 rounded-md font-extrabold">
+                        {loc.quantity.toLocaleString('vi-VN')} {part.unit}
+                      </span>
+                    </span>
+                  ))}
+                  {partLocations.length === 0 && (
+                    <span className="text-xs text-slate-500 italic">Chưa phân vị trí</span>
+                  )}
+                </div>
               </div>
 
               <div>
@@ -263,6 +279,7 @@ export const ElectronicBinCardModal: React.FC<ElectronicBinCardModalProps> = ({
                     <th className="p-2.5 border-r border-slate-300 font-bold text-right bg-emerald-50 text-emerald-900 w-20">Nhập</th>
                     <th className="p-2.5 border-r border-slate-300 font-bold text-right bg-blue-50 text-blue-900 w-20">Xuất</th>
                     <th className="p-2.5 border-r border-slate-300 font-bold text-right bg-amber-50 text-amber-900 w-24">Tồn cuối</th>
+                    <th className="p-2.5 border-r border-slate-300 font-bold text-emerald-900 bg-emerald-50/70 w-32">Kệ / Vị trí</th>
                     <th className="p-2.5 border-r border-slate-300 font-bold">Người thực hiện / Nhận</th>
                     <th className="p-2.5 border-r border-slate-300 font-bold w-32">Lệnh sản xuất</th>
                     <th className="p-2.5 font-bold">Lý do / Ghi chú</th>
@@ -271,7 +288,7 @@ export const ElectronicBinCardModal: React.FC<ElectronicBinCardModalProps> = ({
                 <tbody>
                   {filteredHistory.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="p-8 text-center text-slate-400 italic">
+                      <td colSpan={9} className="p-8 text-center text-slate-400 italic">
                         Chưa có giao dịch nhập/xuất kho nào cho linh kiện này.
                       </td>
                     </tr>
@@ -279,6 +296,8 @@ export const ElectronicBinCardModal: React.FC<ElectronicBinCardModalProps> = ({
                     filteredHistory.map((item, idx) => {
                       const isStockIn = item.type === 'IN';
                       const isAudit = item.type === 'AUDIT_ADJUSTMENT';
+
+                      const itemLoc = item.locationId || part.location?.split(',')[0]?.split('(')[0]?.trim() || 'Kho chính';
 
                       return (
                         <tr
@@ -305,6 +324,12 @@ export const ElectronicBinCardModal: React.FC<ElectronicBinCardModalProps> = ({
                           </td>
                           <td className="p-2 border-r border-slate-200 text-right font-black text-slate-900 bg-amber-50/40">
                             {item.stockAfter.toLocaleString('vi-VN')}
+                          </td>
+                          <td className="p-2 border-r border-slate-200 font-bold text-slate-800 bg-emerald-50/20 whitespace-nowrap">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100/90 text-emerald-950 border border-emerald-300 shadow-2xs">
+                              <MapPin className="w-3 h-3 mr-1 text-emerald-600 shrink-0" />
+                              {itemLoc}
+                            </span>
                           </td>
                           <td className="p-2 border-r border-slate-200 font-medium text-slate-800">
                             {item.person || '-'}
@@ -336,7 +361,7 @@ export const ElectronicBinCardModal: React.FC<ElectronicBinCardModalProps> = ({
                       <td className="p-2.5 border-r border-slate-300 text-right text-slate-900 font-black">
                         {part.currentStock.toLocaleString('vi-VN')}
                       </td>
-                      <td colSpan={3} className="p-2.5 text-slate-500 font-normal italic">
+                      <td colSpan={4} className="p-2.5 text-slate-500 font-normal italic">
                         Đã đối soát chính xác theo nhật ký thẻ kho
                       </td>
                     </tr>

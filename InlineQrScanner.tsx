@@ -59,8 +59,33 @@ export const InlineQrScanner: React.FC<InlineQrScannerProps> = ({
     };
   }, []);
 
+  const playBeepSound = () => {
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(987.77, ctx.currentTime);
+      gain.gain.setValueAtTime(0.4, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.12);
+    } catch (e) {
+      // ignore
+    }
+  };
+
   const handleProcessScan = (rawText: string) => {
     if (!rawText.trim()) return;
+
+    playBeepSound();
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate([100, 50, 100]);
+    }
 
     setErrorMsg(null);
     setUsedInfo(null);
@@ -159,27 +184,18 @@ export const InlineQrScanner: React.FC<InlineQrScannerProps> = ({
             }
           };
 
-          // Get list of cameras available on device
-          const devices = await Html5Qrcode.getCameras().catch(() => []);
-          
+          // Prefer facingMode environment directly for native OS back-camera autofocus selection
           let cameraParam: any = { facingMode: 'environment' };
-          if (devices && devices.length > 0) {
-            const backCamera = devices.find((d) =>
-              d.label.toLowerCase().includes('back') ||
-              d.label.toLowerCase().includes('environment') ||
-              d.label.toLowerCase().includes('rear') ||
-              d.label.toLowerCase().includes('sau')
-            );
-            cameraParam = backCamera ? backCamera.id : devices[devices.length - 1].id;
-          }
 
           const qrConfig = {
-            fps: 15,
+            fps: 25, // 25 scans per second for near-instant QR recognition
             qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+              // Expand scan area to 92% of frame so QR code anywhere in video is decoded instantly
               const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-              const qrboxSize = Math.floor(minEdge * 0.75);
-              return { width: Math.max(qrboxSize, 180), height: Math.max(qrboxSize, 180) };
+              const qrboxSize = Math.floor(minEdge * 0.92);
+              return { width: Math.max(qrboxSize, 220), height: Math.max(qrboxSize, 220) };
             },
+            aspectRatio: 1.0,
             experimentalFeatures: {
               useBarCodeDetectorIfSupported: true,
             },
@@ -188,8 +204,19 @@ export const InlineQrScanner: React.FC<InlineQrScannerProps> = ({
           try {
             await html5QrCode.start(cameraParam, qrConfig, onScanSuccess, () => {});
           } catch (firstErr) {
-            console.warn('Initial camera launch failed, falling back to facingMode user...', firstErr);
-            await html5QrCode.start({ facingMode: 'user' }, qrConfig, onScanSuccess, () => {});
+            console.warn('Initial camera launch with environment facingMode failed, retrying with device list...', firstErr);
+            const devices = await Html5Qrcode.getCameras().catch(() => []);
+            let cameraId: any = { facingMode: 'user' };
+            if (devices && devices.length > 0) {
+              const backCamera = devices.find((d) =>
+                d.label.toLowerCase().includes('back') ||
+                d.label.toLowerCase().includes('environment') ||
+                d.label.toLowerCase().includes('rear') ||
+                d.label.toLowerCase().includes('sau')
+              );
+              cameraId = backCamera ? backCamera.id : devices[devices.length - 1].id;
+            }
+            await html5QrCode.start(cameraId, qrConfig, onScanSuccess, () => {});
           }
         } catch (err: any) {
           console.error('Camera start error:', err);
@@ -302,10 +329,11 @@ export const InlineQrScanner: React.FC<InlineQrScannerProps> = ({
       </div>
 
       {/* Camera Live View element */}
-      <div className={`bg-slate-950 p-3 rounded-xl border border-amber-400/50 space-y-2 ${isCameraActive ? 'block' : 'hidden'}`}>
-        <div id={qrContainerId} className="w-full rounded-lg overflow-hidden max-h-60"></div>
-        <p className="text-[11px] text-center text-amber-200 font-medium">
-          Đưa mã QR / Barcode vào ô hình vuông trên khung hình Camera
+      <div className={`bg-slate-950 p-2.5 sm:p-3 rounded-2xl border-2 border-amber-400 space-y-2 ${isCameraActive ? 'block' : 'hidden'}`}>
+        <div id={qrContainerId} className="w-full rounded-xl overflow-hidden min-h-[280px]"></div>
+        <p className="text-[11px] text-center text-amber-300 font-bold flex items-center justify-center space-x-1">
+          <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping inline-block mr-1"></span>
+          <span>Đưa mã QR / Barcode vào khung hình Camera (Tự động nhận diện cực nhanh)</span>
         </p>
       </div>
 

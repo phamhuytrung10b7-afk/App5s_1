@@ -161,6 +161,26 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     }
   };
 
+  const playBeepSound = () => {
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(987.77, ctx.currentTime);
+      gain.gain.setValueAtTime(0.4, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.12);
+    } catch (e) {
+      // ignore
+    }
+  };
+
   const startCamera = async () => {
     setCameraError(null);
     setIsCameraActive(true);
@@ -180,30 +200,24 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
         html5QrcodeRef.current = html5QrCode;
 
         const onScanSuccess = (decodedText: string) => {
+          playBeepSound();
+          if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            navigator.vibrate([100, 50, 100]);
+          }
           setManualCode(decodedText);
           stopCamera();
         };
 
-        const devices = await Html5Qrcode.getCameras().catch(() => []);
-        let cameraParam: any = { facingMode: 'environment' };
-
-        if (devices && devices.length > 0) {
-          const backCamera = devices.find((d) =>
-            d.label.toLowerCase().includes('back') ||
-            d.label.toLowerCase().includes('environment') ||
-            d.label.toLowerCase().includes('rear') ||
-            d.label.toLowerCase().includes('sau')
-          );
-          cameraParam = backCamera ? backCamera.id : devices[devices.length - 1].id;
-        }
+        const cameraParam: any = { facingMode: 'environment' };
 
         const qrConfig = {
-          fps: 15,
+          fps: 25,
           qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
             const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-            const qrboxSize = Math.floor(minEdge * 0.75);
-            return { width: Math.max(qrboxSize, 180), height: Math.max(qrboxSize, 180) };
+            const qrboxSize = Math.floor(minEdge * 0.92);
+            return { width: Math.max(qrboxSize, 220), height: Math.max(qrboxSize, 220) };
           },
+          aspectRatio: 1.0,
           experimentalFeatures: {
             useBarCodeDetectorIfSupported: true,
           },
@@ -213,7 +227,18 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
           await html5QrCode.start(cameraParam, qrConfig, onScanSuccess, () => {});
         } catch (envErr: any) {
           console.warn('Environment camera start attempt failed, trying user camera...', envErr);
-          await html5QrCode.start({ facingMode: 'user' }, qrConfig, onScanSuccess, () => {});
+          const devices = await Html5Qrcode.getCameras().catch(() => []);
+          let cameraId: any = { facingMode: 'user' };
+          if (devices && devices.length > 0) {
+            const backCamera = devices.find((d) =>
+              d.label.toLowerCase().includes('back') ||
+              d.label.toLowerCase().includes('environment') ||
+              d.label.toLowerCase().includes('rear') ||
+              d.label.toLowerCase().includes('sau')
+            );
+            cameraId = backCamera ? backCamera.id : devices[devices.length - 1].id;
+          }
+          await html5QrCode.start(cameraId, qrConfig, onScanSuccess, () => {});
         }
       } catch (err: any) {
         console.warn('Camera start issue caught:', err);

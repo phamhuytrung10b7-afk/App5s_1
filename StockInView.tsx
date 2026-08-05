@@ -63,15 +63,17 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
   const [locScanGunInput, setLocScanGunInput] = useState('');
 
   const qtyInputRef = useRef<HTMLInputElement>(null);
+  const manualQtyInputRef = useRef<HTMLInputElement>(null);
+  const locationSelectRef = useRef<HTMLSelectElement>(null);
+  const modalLocationSelectRef = useRef<HTMLSelectElement>(null);
   const locHtml5QrRef = useRef<Html5Qrcode | null>(null);
 
   const selectedPart = parts.find((p) => p.id === selectedPartId);
 
   useEffect(() => {
     if (selectedPart) {
-      const locs = storageService.getPartLocations(selectedPart);
-      const defaultName = locs[0]?.locationName || selectedPart.location?.split(',')[0]?.split('(')[0]?.trim() || settings.locations?.[0]?.name || 'Kho chính';
-      setSelectedLocation(defaultName);
+      setSelectedLocation('');
+      setCustomLocation('');
     }
   }, [selectedPartId]);
 
@@ -276,8 +278,7 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
     }
 
     // Open Popup Modal asking user for import quantity and location!
-    const defaultLoc = part.location && part.location !== 'Chưa phân vị trí' ? part.location : (settings.locations?.[0]?.name || '');
-    setSelectedLocation(defaultLoc);
+    setSelectedLocation('');
     setCustomLocation('');
     setImportQtyInput(''); // Blank by default, user must enter actual quantity!
     setPartialImportModal({
@@ -308,13 +309,19 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
       setMessage({ type: 'error', text: 'Số lượng nhập phải lớn hơn 0!' });
       return;
     }
+
+    const targetLoc = (selectedLocation === '__custom__' ? customLocation : selectedLocation).trim();
+    if (!targetLoc) {
+      setMessage({ type: 'error', text: 'Vui lòng chọn hoặc quét vị trí / kệ nhập kho!' });
+      return;
+    }
+
     if (!person.trim()) {
       setMessage({ type: 'error', text: 'Vui lòng chọn hoặc nhập tên người nhập kho!' });
       return;
     }
 
     try {
-      const targetLoc = selectedLocation || customLocation;
       const tx = storageService.addStockIn({
         partId: selectedPartId,
         quantity: Number(quantity),
@@ -322,7 +329,7 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
         person: person.trim(),
         reasonOrPurpose: reason.trim(),
         notes: notes.trim(),
-        locationId: targetLoc ? targetLoc.trim() : undefined,
+        locationId: targetLoc,
       });
 
       // If imported via Cont QR Code, mark this tag as USED so it can NEVER be scanned twice!
@@ -512,12 +519,18 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
                   required
                   autoFocus
                   value={importQtyInput === '' ? '' : importQtyInput}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      modalLocationSelectRef.current?.focus();
+                    }
+                  }}
                   onChange={(e) => setImportQtyInput(e.target.value === '' ? '' : Number(e.target.value))}
                   className="w-full px-3.5 py-2.5 bg-amber-50/50 border-2 border-amber-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 rounded-xl text-base font-mono font-bold text-slate-900 outline-hidden transition-all"
                   placeholder="👉 Tự điền số lượng kiểm đếm đợt này..."
                 />
                 <p className="text-[10px] text-slate-500 italic">
-                  * Hệ thống không tự điền sẵn. Vui lòng gõ số lượng thực tế kiểm đếm khi nhận hàng.
+                  💡 Gõ số lượng xong nhấn Enter để chuyển sang ô Chọn Kệ. Hệ thống không tự điền sẵn.
                 </p>
 
                 {/* Quick Presets */}
@@ -618,6 +631,7 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
 
                 {/* Location Select Dropdown */}
                 <select
+                  ref={modalLocationSelectRef}
                   value={selectedLocation}
                   onChange={(e) => {
                     setSelectedLocation(e.target.value);
@@ -625,9 +639,9 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
                       setCustomLocation('');
                     }
                   }}
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 text-xs font-bold text-slate-800 outline-hidden"
+                  className="w-full px-3.5 py-2.5 bg-white border-2 border-emerald-400 rounded-xl focus:ring-2 focus:ring-emerald-500 text-xs font-bold text-slate-900 outline-hidden"
                 >
-                  <option value="">-- Chọn khoang / kệ lưu trữ --</option>
+                  <option value="">-- Bắt buộc chọn khoang / kệ lưu trữ --</option>
                   {settings.locations?.map((loc) => (
                     <option key={loc.id} value={loc.name}>
                       📍 {loc.name} {loc.description ? `(${loc.description})` : ''}
@@ -643,29 +657,43 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
                     value={customLocation}
                     onChange={(e) => setCustomLocation(e.target.value)}
                     placeholder="Tên kệ / khoang mới (VD: Kệ A1, Tủ B2)..."
-                    className="w-full mt-2 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-hidden"
+                    className="w-full mt-2 px-3.5 py-2 bg-white border-2 border-emerald-400 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-hidden"
                     required
                   />
                 )}
               </div>
               
               {/* Action Buttons */}
-              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setPartialImportModal(null)}
-                  className="px-4 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-xl text-xs transition-colors cursor-pointer"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs shadow-md transition-all flex items-center space-x-1.5 cursor-pointer"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>XÁC NHẬN NHẬP KHO</span>
-                </button>
-              </div>
+              {(() => {
+                const modalTargetLoc = (selectedLocation === '__custom__' ? customLocation : selectedLocation).trim();
+                const isModalQtyValid = typeof importQtyInput === 'number' && importQtyInput > 0 && importQtyInput <= (partialImportModal.originalQty - partialImportModal.alreadyImported);
+                const isModalLocValid = Boolean(modalTargetLoc);
+                const isModalCanSubmit = isModalQtyValid && isModalLocValid;
+
+                return (
+                  <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setPartialImportModal(null)}
+                      className="px-4 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-xl text-xs transition-colors cursor-pointer"
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!isModalCanSubmit}
+                      className={`px-6 py-2.5 font-black rounded-xl text-xs shadow-md transition-all flex items-center space-x-1.5 cursor-pointer ${
+                        isModalCanSubmit
+                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95'
+                          : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>XÁC NHẬN NHẬP KHO</span>
+                    </button>
+                  </div>
+                );
+              })()}
             </form>
           </div>
         </div>
@@ -773,37 +801,60 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Location / Shelf Selector */}
           {selectedPart && (
-            <div className="col-span-1 md:col-span-2 bg-emerald-50/60 p-3 rounded-xl border border-emerald-200">
-              <label className="block text-xs font-bold text-emerald-900 mb-1 flex items-center justify-between">
-                <span>📍 Chọn Kệ / Vị Trí Nhập Hàng (Ghi Nhận Thẻ Kho Cụ Thể):</span>
-                <span className="text-[11px] font-normal text-emerald-700">Tự động cộng tồn kho cho kệ được chọn</span>
+            <div className="col-span-1 md:col-span-2 bg-emerald-50/60 p-3.5 rounded-xl border-2 border-emerald-300">
+              <label className="block text-xs font-extrabold text-emerald-950 mb-1 flex items-center justify-between">
+                <span>📍 BẮT BUỘC CHỌN KỆ / VỊ TRÍ NHẬP HÀNG *</span>
+                <span className="text-[11px] font-normal text-emerald-800">Cộng tồn kho cụ thể cho kệ được chọn</span>
               </label>
               <select
+                ref={locationSelectRef}
                 value={selectedLocation}
                 onChange={(e) => setSelectedLocation(e.target.value)}
-                className="w-full px-3 py-2 border border-emerald-300 rounded-xl text-xs font-bold bg-white text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-hidden"
+                className="w-full px-3.5 py-2.5 border-2 border-emerald-400 rounded-xl text-xs font-bold bg-white text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-hidden"
               >
+                <option value="">-- Bắt buộc chọn khoang / kệ lưu trữ --</option>
                 {(settings.locations || []).map((loc) => (
                   <option key={loc.id} value={loc.name}>
                     📍 {loc.name} {loc.description ? `(${loc.description})` : ''}
                   </option>
                 ))}
+                <option value="__custom__">➕ Tự nhập vị trí mới...</option>
               </select>
+
+              {selectedLocation === '__custom__' && (
+                <input
+                  type="text"
+                  value={customLocation}
+                  onChange={(e) => setCustomLocation(e.target.value)}
+                  placeholder="Gõ tên vị trí/kệ mới..."
+                  className="w-full mt-2 px-3.5 py-2 bg-white border-2 border-emerald-400 rounded-xl text-xs font-bold text-slate-900 outline-hidden"
+                />
+              )}
             </div>
           )}
 
           {/* Quantity */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
+            <label className="block text-xs font-extrabold text-slate-800 mb-1">
               Số Lượng Nhập <span className="text-red-500">*</span>
             </label>
             <input
+              ref={manualQtyInputRef}
               type="number"
               min={1}
               value={quantity}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  locationSelectRef.current?.focus();
+                }
+              }}
               onChange={(e) => setQuantity(parseInt(e.target.value) || 0)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-base font-black text-emerald-700 focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-hidden"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border-2 border-slate-300 rounded-xl text-base font-black text-emerald-700 focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-hidden"
             />
+            <p className="text-[10px] text-slate-500 mt-1">
+              💡 Gõ số lượng xong nhấn Enter để chuyển sang ô Chọn Kệ.
+            </p>
           </div>
 
           {/* Date & Time (Giờ, phút, ngày) */}
@@ -866,7 +917,12 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
         <div className="pt-3 border-t border-slate-100 flex justify-end">
           <button
             type="submit"
-            className="flex items-center space-x-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer"
+            disabled={!selectedPartId || quantity <= 0 || !((selectedLocation === '__custom__' ? customLocation : selectedLocation).trim())}
+            className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer ${
+              selectedPartId && quantity > 0 && ((selectedLocation === '__custom__' ? customLocation : selectedLocation).trim())
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+            }`}
           >
             <ArrowDownLeft className="w-4 h-4" />
             <span>Xác Nhận Nhập Kho</span>

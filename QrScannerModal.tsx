@@ -109,16 +109,6 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
       return;
     }
 
-    if (mode === 'out' && manualCode.trim().startsWith('CONT_IN|')) {
-      setMatchedPart(null);
-      setUsedInfo({
-        isUsed: true,
-        scannedAt: 'MÃ NHẬP KHO CONT_IN',
-        scannedBy: '⛔ Không được dùng mã QR Nhập Kho để Xuất Kho!',
-      });
-      return;
-    }
-
     const parsed = parseScannedQrPayload(manualCode);
     const searchCode = parsed.partCode.toLowerCase();
 

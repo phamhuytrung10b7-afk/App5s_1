@@ -211,28 +211,28 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
       <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-4 sm:my-8 animate-in zoom-in-95 duration-200">
         
-        {/* Header Bar */}
-        <div className="bg-gradient-to-r from-indigo-900 via-blue-900 to-slate-900 text-white p-4 sm:p-5 flex items-center justify-between border-b border-indigo-800">
+        {/* Header Bar - BRIGHT CLEAN */}
+        <div className="bg-gradient-to-r from-blue-700 to-indigo-700 text-white p-4 sm:p-5 flex items-center justify-between border-b border-blue-800">
           <div className="flex items-center space-x-3">
-            <div className="p-2.5 bg-amber-400 text-slate-950 rounded-2xl font-black shadow-lg">
-              <Zap className="w-6 h-6 animate-pulse" />
+            <div className="p-2.5 bg-amber-300 text-amber-950 rounded-2xl font-black shadow-xs">
+              <Zap className="w-6 h-6 animate-pulse text-amber-900" />
             </div>
             <div>
-              <span className="px-2.5 py-0.5 bg-amber-400 text-slate-950 text-[10px] font-black rounded-md uppercase tracking-wide">
-                POPUP XÁC NHẬN XUẤT KHO
+              <span className="px-2.5 py-0.5 bg-amber-300 text-amber-950 text-[10px] font-extrabold rounded-md uppercase tracking-wide">
+                XÁC NHẬN XUẤT KHO
               </span>
-              <h2 className="text-base sm:text-lg font-black text-white mt-0.5">
-                Xác Nhận Số Lượng & Quét Kệ (Đánh Giá FIFO)
+              <h2 className="text-base sm:text-lg font-bold text-white mt-0.5">
+                Xác Nhận Số Lượng & Quét Vị Trí Kệ
               </h2>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-all cursor-pointer"
+            className="p-2 text-blue-100 hover:text-white hover:bg-white/10 rounded-xl transition-all cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -252,12 +252,12 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                <div className="w-14 h-14 bg-indigo-100 text-indigo-700 rounded-xl flex items-center justify-center font-bold shrink-0">
+                <div className="w-14 h-14 bg-blue-100 text-blue-700 rounded-xl flex items-center justify-center font-bold shrink-0">
                   <Package className="w-7 h-7" />
                 </div>
               )}
               <div>
-                <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 text-[11px] font-bold rounded-md font-mono">
+                <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-[11px] font-bold rounded-md font-mono">
                   [{part.code}]
                 </span>
                 <h3 className="text-base font-extrabold text-slate-900 mt-1">{part.name}</h3>
@@ -279,16 +279,16 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
           {/* FIFO Guidance Note */}
           <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl text-xs space-y-2">
             <div className="flex items-center justify-between font-black text-amber-900 flex-wrap gap-2">
-              <span className="flex items-center space-x-2 text-sm">
+              <span className="flex items-center space-x-2 text-sm font-bold">
                 <Zap className="w-4 h-4 text-amber-600 shrink-0" />
                 <span>GỢI Ý KỆ XUẤT HÀNG THEO NGUYÊN TẮC FIFO (#1 NHẬP TRƯỚC XUẤT TRƯỚC):</span>
               </span>
-              <span className="px-2.5 py-1 bg-amber-400 text-slate-950 font-black rounded-lg text-xs">
+              <span className="px-2.5 py-1 bg-amber-300 text-amber-950 font-bold rounded-lg text-xs">
                 📍 {expectedFifoLocationName}
               </span>
             </div>
 
-            <p className="text-amber-800 font-medium leading-relaxed">
+            <p className="text-amber-900 font-medium leading-relaxed">
               {isBaselineLot ? (
                 <span>
                   Linh kiện đang dùng <strong>Lô tồn khởi tạo ban đầu</strong>. Hệ thống cho phép trừ tồn từ kệ <strong>{expectedFifoLocationName}</strong> hoặc các kệ hợp lệ.
@@ -304,14 +304,14 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
             </p>
           </div>
 
-          {/* STEP 1: QUANTITY INPUT - HIGH CONTRAST LIGHT THEME */}
-          <div className="bg-gradient-to-r from-sky-50 via-cyan-50 to-blue-50 p-4 sm:p-5 rounded-2xl text-slate-900 space-y-3 border-2 border-cyan-300 shadow-sm">
+          {/* STEP 1: QUANTITY INPUT - BRIGHT LIGHT STYLING */}
+          <div className="bg-sky-50/80 p-4 sm:p-5 rounded-2xl text-slate-900 space-y-3 border-2 border-sky-300 shadow-2xs">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-black text-cyan-950 uppercase tracking-wide flex items-center space-x-2">
-                <span className="w-5 h-5 rounded-full bg-cyan-600 text-white flex items-center justify-center text-[11px] font-black">1</span>
+              <label className="text-xs font-extrabold text-blue-950 uppercase tracking-wide flex items-center space-x-2">
+                <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[11px] font-bold">1</span>
                 <span>NHẬP SỐ LƯỢNG CẦN XUẤT KHO:</span>
               </label>
-              <span className="text-xs font-bold text-cyan-800 bg-cyan-100 px-2.5 py-0.5 rounded-md border border-cyan-200">
+              <span className="text-xs font-bold text-blue-800 bg-blue-100 px-2.5 py-0.5 rounded-md border border-blue-200">
                 Đơn vị: {part.unit}
               </span>
             </div>
@@ -330,28 +330,28 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
                   setLocationError(null);
                 }}
                 placeholder="Nhập số lượng..."
-                className="w-full px-4 py-3 bg-white border-2 border-cyan-500 rounded-xl text-center text-cyan-950 font-black text-2xl outline-hidden focus:border-cyan-600 focus:ring-4 focus:ring-cyan-200 shadow-inner placeholder:text-slate-300 placeholder:text-base placeholder:font-normal"
+                className="w-full px-4 py-3 bg-white border-2 border-blue-400 rounded-xl text-center text-blue-950 font-black text-2xl outline-hidden focus:border-blue-600 focus:ring-2 focus:ring-blue-100 shadow-2xs placeholder:text-slate-300 placeholder:text-base placeholder:font-normal"
               />
               <button
                 type="button"
                 onClick={() => locationInputRef.current?.focus()}
-                className="px-4 py-3 bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs rounded-xl shadow-xs shrink-0 transition-colors cursor-pointer"
-                title="Bấm hoặc nhấn Enter để nhảy con trỏ sang ô quét kệ"
+                className="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-2xs shrink-0 transition-colors cursor-pointer"
+                title="Bấm hoặc nhấn Enter để chuyển sang ô quét kệ"
               >
-                Tiếp: Quét Kệ ➔
+                Tiếp: Chọn Kệ ➔
               </button>
             </div>
-            <p className="text-[11px] text-cyan-800 font-medium flex items-center space-x-1">
-              <span>💡 Sau khi gõ số lượng, nhấn <strong>Enter</strong> để con trỏ tự động nhảy sang <strong>Ô quét Vị trí Kệ</strong>.</span>
+            <p className="text-[11px] text-blue-800 font-medium flex items-center space-x-1">
+              <span>💡 Nhập số lượng xong, nhấn <strong>Enter</strong> để chuyển ngay sang <strong>Bắt buộc Chọn / Quét Vị trí Kệ</strong>.</span>
             </p>
           </div>
 
           {/* STEP 2: SCAN OR SELECT SHELF LOCATION WITH FIFO VALIDATION */}
-          <div className="bg-slate-50 p-4 rounded-2xl border-2 border-indigo-200 space-y-3">
+          <div className="bg-slate-50 p-4 rounded-2xl border-2 border-blue-200 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <label className="text-xs font-extrabold text-indigo-950 flex items-center space-x-2">
-                <MapPin className="w-4 h-4 text-indigo-600 shrink-0" />
-                <span>2. BẮT BUỘC QUÉT MÃ VỊ TRÍ KỆ (ĐỐI SOÁT FIFO):</span>
+              <label className="text-xs font-extrabold text-slate-800 flex items-center space-x-2">
+                <MapPin className="w-4 h-4 text-blue-600 shrink-0" />
+                <span>2. BẮT BUỘC QUÉT HOẶC CHỌN VỊ TRÍ KỆ (ĐỐI SOÁT FIFO) *</span>
               </label>
 
               {/* Quick Select Buttons from Existing Locations */}
@@ -366,8 +366,8 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
                     }}
                     className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
                       scannedLocation === loc.locationName
-                        ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs'
-                        : 'bg-white text-indigo-900 border-indigo-200 hover:bg-indigo-50'
+                        ? 'bg-blue-600 text-white border-blue-700 shadow-2xs'
+                        : 'bg-white text-blue-900 border-blue-200 hover:bg-blue-50'
                     }`}
                   >
                     📍 {loc.locationName} ({loc.quantity} {part.unit})
@@ -386,16 +386,16 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
                   setScannedLocation(e.target.value);
                   setLocationError(null);
                 }}
-                placeholder={`[Bấm con trỏ & bắn súng quét mã Kệ] Ví dụ: ${expectedFifoLocationName}...`}
-                className={`w-full pl-10 pr-24 py-3 bg-white border-2 rounded-xl text-sm font-black text-slate-900 outline-hidden transition-all ${
+                placeholder={`[Bắn súng quét mã Kệ hoặc chọn danh sách] Ví dụ: ${expectedFifoLocationName}...`}
+                className={`w-full pl-10 pr-28 py-3 bg-white border-2 rounded-xl text-sm font-bold text-slate-900 outline-hidden transition-all ${
                   isLocationValid && scannedLocation
-                    ? 'border-emerald-500 bg-emerald-50/30 ring-2 ring-emerald-200'
+                    ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-200'
                     : scannedLocation && !isLocationValid
-                    ? 'border-red-500 bg-red-50/30 ring-2 ring-red-200'
-                    : 'border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200'
+                    ? 'border-red-500 bg-red-50/40 ring-2 ring-red-200'
+                    : 'border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100'
                 }`}
               />
-              <QrCode className="w-5 h-5 text-indigo-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <QrCode className="w-5 h-5 text-blue-600 absolute left-3 top-1/2 -translate-y-1/2" />
 
               {/* Quick Preset Dropdown */}
               <select
@@ -406,7 +406,7 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
                   }
                 }}
                 value=""
-                className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-indigo-100 text-indigo-900 font-bold text-xs rounded-lg border border-indigo-300 cursor-pointer"
+                className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-blue-50 text-blue-900 font-bold text-xs rounded-lg border border-blue-200 cursor-pointer"
               >
                 <option value="">-- Chọn Kệ --</option>
                 {(settings.locations || []).map((loc) => (
@@ -417,37 +417,37 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
               </select>
             </div>
 
-            {/* VALIDATION FEEDBACK BOX */}
+            {/* VALIDATION FEEDBACK BOX - BRIGHT LIGHT THEME */}
             {scannedLocation.trim() !== '' && (
               <div>
                 {isLocationValid ? (
-                  <div className="p-3 bg-emerald-100/90 border-2 border-emerald-500 rounded-xl text-emerald-950 text-xs font-bold flex items-center space-x-2 shadow-xs">
+                  <div className="p-3 bg-emerald-50 border-2 border-emerald-400 rounded-xl text-emerald-900 text-xs font-bold flex items-center space-x-2 shadow-2xs">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
                     <div>
-                      <p className="font-extrabold uppercase text-emerald-900">🟢 VỊ TRÍ CHÍNH XÁC & ĐÚNG CHUẨN FIFO!</p>
+                      <p className="font-extrabold uppercase text-emerald-800">🟢 VỊ TRÍ CHÍNH XÁC & ĐÚNG CHUẨN FIFO!</p>
                       <p className="text-[11px] font-medium text-emerald-800">
                         Đã xác nhận kệ <strong>"{scannedLocation}"</strong> hợp lệ cho linh kiện [{part.code}].
                       </p>
                     </div>
                   </div>
                 ) : (
-                  <div className="p-4 bg-red-950 border-2 border-red-500 rounded-xl text-red-100 text-xs space-y-2 shadow-lg animate-in zoom-in-95">
-                    <div className="flex items-center space-x-2 text-red-400 font-black text-sm uppercase">
-                      <ShieldAlert className="w-5 h-5 shrink-0 text-red-400 animate-bounce" />
-                      <span>CẢNH BÁO LỖI VỊ TRÍ KỆ HOẶC NGUYÊN TẮC FIFO!</span>
+                  <div className="p-4 bg-red-50 border-2 border-red-400 rounded-xl text-red-900 text-xs space-y-2 shadow-2xs animate-in zoom-in-95">
+                    <div className="flex items-center space-x-2 text-red-700 font-bold text-sm uppercase">
+                      <ShieldAlert className="w-5 h-5 shrink-0 text-red-600 animate-bounce" />
+                      <span>CẢNH BÁO VỊ TRÍ KỆ / FIFO!</span>
                     </div>
                     
-                    <p className="text-red-200 font-semibold pl-7">
-                      Vị trí bạn vừa quét/chọn: <strong className="text-amber-300 font-extrabold">"{scannedLocation}"</strong> KHÔNG ĐÚNG với kệ ưu tiên FIFO.
+                    <p className="text-red-800 font-semibold pl-7">
+                      Vị trí vừa quét/chọn: <strong className="text-red-950 font-bold">"{scannedLocation}"</strong> KHÔNG ĐÚNG với kệ ưu tiên FIFO.
                     </p>
 
-                    <div className="bg-red-900/80 p-3 rounded-lg border border-red-400/50 text-white font-medium text-xs space-y-1">
-                      <p className="font-extrabold text-amber-300 flex items-center space-x-1">
-                        <span>📌 GHI CHÚ BẮT BUỘC ĐỂ QUÉT VẬT TƯ:</span>
+                    <div className="bg-white p-3 rounded-lg border border-red-200 text-slate-800 font-medium text-xs space-y-1">
+                      <p className="font-bold text-red-700 flex items-center space-x-1">
+                        <span>📌 LƯU Ý NGUYÊN TẮC XUẤT KHO:</span>
                       </p>
                       <p className="leading-relaxed">
-                        Theo nguyên tắc <strong>Nhập trước - Xuất trước (FIFO)</strong>, linh kiện này cần được lấy từ kệ <strong className="text-amber-300 underline font-black text-sm">[{expectedFifoLocationName}]</strong>.
-                        Vui lòng di chuyển đến kệ <strong className="text-amber-300">[{expectedFifoLocationName}]</strong> và quét lại đúng mã vị trí này để hệ thống cho phép xuất kho!
+                        Theo quy định <strong>FIFO</strong>, linh kiện này cần lấy tại kệ <strong className="text-red-700 underline font-extrabold text-sm">[{expectedFifoLocationName}]</strong>.
+                        Vui lòng di chuyển đến kệ <strong className="text-red-700 font-bold">[{expectedFifoLocationName}]</strong> và quét lại mã vị trí này để hệ thống xác nhận xuất kho.
                       </p>
                     </div>
                   </div>
@@ -456,7 +456,7 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
             )}
 
             {locationError && (
-              <div className="p-3 bg-red-100 border border-red-300 text-red-800 text-xs font-bold rounded-xl flex items-center space-x-2">
+              <div className="p-3 bg-red-50 border border-red-300 text-red-800 text-xs font-bold rounded-xl flex items-center space-x-2">
                 <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
                 <span>{locationError}</span>
               </div>
@@ -512,15 +512,15 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
 
             <button
               type="submit"
-              disabled={!scannedLocation.trim() || !isLocationValid}
-              className={`w-full sm:w-auto px-8 py-3.5 rounded-xl font-black text-xs shadow-lg transition-all flex items-center justify-center space-x-2 cursor-pointer ${
-                scannedLocation.trim() && isLocationValid
-                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-emerald-500/20 active:scale-95'
-                  : 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
+              disabled={!scannedLocation.trim() || !isLocationValid || !qty || Number(qty) <= 0}
+              className={`w-full sm:w-auto px-8 py-3.5 rounded-xl font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+                scannedLocation.trim() && isLocationValid && qty && Number(qty) > 0
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95'
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
               }`}
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>XÁC NHẬN XUẤT KHO NGAY (-{qty})</span>
+              <span>XÁC NHẬN XUẤT KHO NGAY {qty ? `(-${qty})` : ''}</span>
             </button>
           </div>
         </form>

@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Part, AppSettings } from './types';
 import { storageService } from './storage';
-import { ArrowUpRight, CheckCircle2, AlertTriangle, AlertCircle, Package, Clock, User, FileCode, FileText, QrCode, Zap } from 'lucide-react';
+import { ArrowUpRight, CheckCircle2, AlertTriangle, AlertCircle, Package, Clock, User, FileCode, FileText, QrCode, Zap, Printer, X } from 'lucide-react';
 import { SearchableSelect, SelectOption } from './SearchableSelect';
 import { QrScannerModal } from './QrScannerModal';
 import { InlineQrScanner } from './InlineQrScanner';
 import { StockOutScanModal } from './StockOutScanModal';
+import { printHtml } from './printHelper';
 
 interface StockOutViewProps {
   parts: Part[];
@@ -40,8 +41,24 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
-  // Tab #1 Priority: Quét mã tự động
-  const [mainTab, setMainTab] = useState<'scan' | 'model' | 'manual'>('scan');
+  // Tab #1 Priority: XUẤT THEO MODEL (BOM)
+  const [mainTab, setMainTab] = useState<'model' | 'scan' | 'manual'>('model');
+
+  // Printable BOM Dispatch Order Sheet Modal State
+  const [bomPrintModalData, setBomPrintModalData] = useState<{
+    modelName: string;
+    modelQty: number;
+    dateTime: string;
+    person: string;
+    items: Array<{
+      partCode: string;
+      partName: string;
+      unit: string;
+      bomQtyPerSet: number;
+      totalQtyOut: number;
+      fifoLocation: string;
+    }>;
+  } | null>(null);
 
   // Stock Out Scan Modal States
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
@@ -61,6 +78,7 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
   >([]);
 
   const [selectedOutLocation, setSelectedOutLocation] = useState<string>('');
+  const locationSelectRef = useRef<HTMLSelectElement>(null);
 
   const selectedPart = parts.find((p) => p.id === selectedPartId);
   const isOverStock = selectedPart ? quantity > selectedPart.currentStock : false;
@@ -148,6 +166,10 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
       });
       return;
     }
+    if (!selectedOutLocation.trim()) {
+      setMessage({ type: 'error', text: 'Vui lòng chọn hoặc quét vị trí / kệ cần xuất kho!' });
+      return;
+    }
     if (!person.trim()) {
       setMessage({ type: 'error', text: 'Vui lòng chọn hoặc nhập tên người lấy linh kiện!' });
       return;
@@ -193,31 +215,31 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
       </div>
 
       {/* Main Mode Selection Tabs */}
-      <div className="flex border-b border-slate-200 bg-slate-100/80 p-1.5 rounded-2xl gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide">
-        <button
-          type="button"
-          onClick={() => setMainTab('scan')}
-          className={`px-4 py-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center space-x-2 cursor-pointer ${
-            mainTab === 'scan'
-              ? 'bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-md border border-cyan-400/50'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-          }`}
-        >
-          <Zap className="w-4 h-4 text-cyan-300 animate-pulse" />
-          <span>1. QUÉT MÃ TỰ ĐỘNG (ƯU TIÊN SỐ 1)</span>
-        </button>
-
+      <div className="flex border border-slate-200 bg-slate-100 p-1.5 rounded-2xl gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide">
         <button
           type="button"
           onClick={() => setMainTab('model')}
           className={`px-4 py-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center space-x-2 cursor-pointer ${
             mainTab === 'model'
               ? 'bg-pink-600 text-white shadow-md'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200'
           }`}
         >
-          <Package className="w-4 h-4" />
-          <span>2. XUẤT THEO MODEL (BOM)</span>
+          <Package className="w-4 h-4 text-amber-300 animate-bounce" />
+          <span>1. XUẤT THEO MODEL (BOM) (ƯU TIÊN SỐ 1)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMainTab('scan')}
+          className={`px-4 py-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+            mainTab === 'scan'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200'
+          }`}
+        >
+          <Zap className="w-4 h-4 text-amber-300 animate-pulse" />
+          <span>2. QUÉT MÃ TỰ ĐỘNG</span>
         </button>
 
         <button
@@ -225,8 +247,8 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
           onClick={() => setMainTab('manual')}
           className={`px-4 py-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center space-x-2 cursor-pointer ${
             mainTab === 'manual'
-              ? 'bg-white text-slate-900 shadow-sm border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              ? 'bg-white text-slate-900 shadow-sm border border-slate-300'
+              : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200'
           }`}
         >
           <FileText className="w-4 h-4 text-slate-500" />
@@ -451,28 +473,80 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
                       return;
                     }
 
-                    // Perform stock out
+                    // Perform stock out with FIFO location logging & printable list creation
                     try {
                       let totalOut = 0;
-                      itemsToOut.forEach(item => {
-                        const sysPart = parts.find(p => p.code.toLowerCase() === item.partCode.toLowerCase());
+                      const printedItems: Array<{
+                        partCode: string;
+                        partName: string;
+                        unit: string;
+                        bomQtyPerSet: number;
+                        totalQtyOut: number;
+                        fifoLocation: string;
+                      }> = [];
+
+                      itemsToOut.forEach((item) => {
+                        const sysPart = parts.find((p) => p.code.toLowerCase() === item.partCode.toLowerCase());
                         if (sysPart) {
                           const neededQty = item.quantity * modelQty;
+
+                          // Retrieve FIFO priority location for this part
+                          const fifoLots = storageService.getPartFifoLots(sysPart.id);
+                          const fifoNext = fifoLots.find((l) => l.status === 'FIFO_NEXT');
+                          const activeLocs = storageService.getPartLocations(sysPart).filter((l) => l.quantity > 0);
+
+                          let locationName = 'Kho chính';
+                          if (fifoNext && fifoNext.locationName) {
+                            locationName = fifoNext.locationName;
+                          } else if (activeLocs.length > 0) {
+                            locationName = activeLocs[0].locationName;
+                          } else if (sysPart.location) {
+                            locationName = sysPart.location.split(',')[0]?.split('(')[0]?.trim() || 'Kho chính';
+                          }
+
+                          let fullFifoLocStr = locationName;
+                          if (fifoNext && fifoNext.contNumber && !locationName.includes(fifoNext.contNumber)) {
+                            fullFifoLocStr = `${locationName} (${fifoNext.contNumber})`;
+                          }
+
                           storageService.addStockOut({
                             partId: sysPart.id,
                             quantity: neededQty,
                             date: new Date(dateTime).toISOString(),
                             person: person.trim() || 'Lê Hoàng Nam',
                             productionOrder: selectedBom.name,
-                            reasonOrPurpose: 'Sản xuất theo Model',
-                            notes: `SL SX: ${modelQty}`
+                            reasonOrPurpose: 'Sản xuất theo Model (BOM)',
+                            notes: `SL SX: ${modelQty} bộ [FIFO: ${locationName}]`,
+                            locationId: locationName,
                           });
+
+                          printedItems.push({
+                            partCode: sysPart.code,
+                            partName: sysPart.name,
+                            unit: sysPart.unit,
+                            bomQtyPerSet: item.quantity,
+                            totalQtyOut: neededQty,
+                            fifoLocation: fullFifoLocStr,
+                          });
+
                           totalOut++;
                         }
                       });
-                      
-                      setMessage({ type: 'success', text: `Đã xuất kho thành công ${totalOut} linh kiện cho Model ${selectedBom.name}!` });
-                      // Reset modelQty
+
+                      setMessage({
+                        type: 'success',
+                        text: `🎉 Đã tiêu hao tồn kho thành công ${totalOut} linh kiện cho Model ${selectedBom.name}! Đã tạo xong Phiếu Soạn Hàng FIFO.`,
+                      });
+
+                      // Open printable dispatch sheet modal
+                      setBomPrintModalData({
+                        modelName: selectedBom.name,
+                        modelQty,
+                        dateTime: dateTime || new Date().toISOString(),
+                        person: person.trim() || 'Lê Hoàng Nam',
+                        items: printedItems,
+                      });
+
                       setModelQty(1);
                       onSuccess();
                     } catch (err: any) {
@@ -512,20 +586,20 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
 
           {/* Quick Out Confirmation Card when a part is scanned */}
           {scannedPartForQuickOut && (
-            <div className="p-5 bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl border-2 border-cyan-400 shadow-xl space-y-4 animate-in fade-in slide-in-from-top-3">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-indigo-800/80 pb-3">
+            <div className="p-5 bg-blue-50 border-2 border-blue-300 text-slate-900 rounded-2xl shadow-md space-y-4 animate-in fade-in slide-in-from-top-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-blue-200 pb-3">
                 <div className="flex items-center space-x-3">
-                  <div className="p-2.5 bg-cyan-400 text-slate-950 rounded-xl font-black">
+                  <div className="p-2.5 bg-blue-600 text-white rounded-xl font-black">
                     <Package className="w-6 h-6" />
                   </div>
                   <div>
-                    <span className="px-2 py-0.5 bg-cyan-400 text-slate-950 text-[10px] font-black rounded-md uppercase">
+                    <span className="px-2 py-0.5 bg-blue-100 text-blue-900 text-[10px] font-black rounded-md uppercase border border-blue-200">
                       Đã Nhận Mã Linh Kiện
                     </span>
-                    <h3 className="text-base font-extrabold text-white mt-0.5">
+                    <h3 className="text-base font-extrabold text-slate-900 mt-0.5">
                       [{scannedPartForQuickOut.code}] {scannedPartForQuickOut.name}
                     </h3>
-                    <p className="text-xs text-indigo-200">Vị trí: {scannedPartForQuickOut.location} • Tồn kho hiện tại: <strong className="text-amber-300 font-bold">{scannedPartForQuickOut.currentStock} {scannedPartForQuickOut.unit}</strong></p>
+                    <p className="text-xs text-slate-600">Vị trí kho: {scannedPartForQuickOut.location} • Tồn kho hiện tại: <strong className="text-blue-700 font-bold">{scannedPartForQuickOut.currentStock} {scannedPartForQuickOut.unit}</strong></p>
                   </div>
                 </div>
 
@@ -533,7 +607,7 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
                   <button
                     type="button"
                     onClick={() => setScannedPartForQuickOut(null)}
-                    className="text-xs text-slate-400 hover:text-white underline cursor-pointer"
+                    className="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer"
                   >
                     Hủy chọn
                   </button>
@@ -547,27 +621,26 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
                 if (!fifoNext) return null;
 
                 return (
-                  <div className="p-3 bg-amber-400/20 border border-amber-400/50 rounded-xl text-xs space-y-1 text-amber-200">
-                    <div className="flex items-center justify-between font-bold text-amber-300">
+                  <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs space-y-1 text-amber-900">
+                    <div className="flex items-center justify-between font-bold text-amber-950">
                       <span className="flex items-center space-x-1.5">
-                        <Zap className="w-4 h-4 text-amber-400 animate-pulse shrink-0" />
+                        <Zap className="w-4 h-4 text-amber-600 animate-pulse shrink-0" />
                         <span>GỢI Ý FIFO (#1 NHẬP TRƯỚC XUẤT TRƯỚC):</span>
                       </span>
-                      <span className="px-2 py-0.5 bg-amber-400 text-slate-950 text-[10px] font-black rounded-md">
+                      <span className="px-2 py-0.5 bg-amber-200 text-amber-950 text-[10px] font-black rounded-md">
                         {fifoNext.contNumber}
                       </span>
                     </div>
-                    <p className="text-amber-100">
-                      Khuyến nghị lấy hàng từ Cont <strong className="text-white font-bold">{fifoNext.contNumber}</strong> (Nhập ngày {new Date(fifoNext.importDate).toLocaleDateString('vi-VN')} • Còn tồn {fifoNext.remainingQty.toLocaleString('vi-VN')} {scannedPartForQuickOut.unit}).
+                    <p className="text-amber-800">
+                      Khuyến nghị lấy hàng từ Cont <strong className="text-amber-950 font-bold">{fifoNext.contNumber}</strong> (Nhập ngày {new Date(fifoNext.importDate).toLocaleDateString('vi-VN')} • Còn tồn {fifoNext.remainingQty.toLocaleString('vi-VN')} {scannedPartForQuickOut.unit}).
                     </p>
                   </div>
                 );
               })()}
 
               <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
-
                 <div className="flex items-center space-x-3">
-                  <label className="text-xs font-bold text-slate-200 whitespace-nowrap">
+                  <label className="text-xs font-bold text-slate-800 whitespace-nowrap">
                     Số lượng xuất:
                   </label>
                   <input
@@ -576,18 +649,22 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
                     max={scannedPartForQuickOut.currentStock}
                     value={quickOutQty}
                     onChange={(e) => setQuickOutQty(Number(e.target.value))}
-                    className="w-28 px-3 py-2 bg-slate-950 border border-cyan-400 rounded-xl text-amber-300 font-black text-center text-sm outline-hidden"
+                    className="w-28 px-3 py-2 bg-white border-2 border-blue-300 rounded-xl text-blue-900 font-black text-center text-sm outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
-                  <span className="text-xs font-bold text-indigo-200">{scannedPartForQuickOut.unit}</span>
+                  <span className="text-xs font-bold text-slate-700">{scannedPartForQuickOut.unit}</span>
                 </div>
 
                 <button
                   type="button"
-                  onClick={() => handleQuickStockOut(scannedPartForQuickOut, quickOutQty)}
-                  className="px-6 py-3 bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-slate-950 font-black text-xs rounded-xl shadow-lg transition-all flex items-center space-x-2 cursor-pointer active:scale-95"
+                  onClick={() => {
+                    setScannedPartForModal(scannedPartForQuickOut);
+                    setInitialScanQty(quickOutQty);
+                    setIsScanModalOpen(true);
+                  }}
+                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center space-x-2 cursor-pointer active:scale-95"
                 >
-                  <Zap className="w-4 h-4 fill-slate-950" />
-                  <span>XÁC NHẬN XUẤT KHO NGAY (-{quickOutQty})</span>
+                  <Zap className="w-4 h-4" />
+                  <span>XÁC NHẬN CHỌN KỆ & XUẤT KHO (-{quickOutQty})</span>
                 </button>
               </div>
             </div>
@@ -749,16 +826,18 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Location / Shelf Selection */}
           {selectedPart && (
-            <div className="col-span-1 md:col-span-2 bg-blue-50/60 p-3.5 rounded-xl border border-blue-200">
-              <label className="block text-xs font-bold text-blue-900 mb-1 flex items-center justify-between">
-                <span>📍 Chọn Kệ / Vị Trí Xuất Hàng (Kiểm Soát Tồn Theo Kệ):</span>
-                <span className="text-[11px] font-normal text-blue-700">Linh kiện có ở {storageService.getPartLocations(selectedPart).length} vị trí</span>
+            <div className="col-span-1 md:col-span-2 bg-blue-50/60 p-3.5 rounded-xl border-2 border-blue-300">
+              <label className="block text-xs font-extrabold text-blue-950 mb-1 flex items-center justify-between">
+                <span>📍 BẮT BUỘC CHỌN KỆ / VỊ TRÍ XUẤT HÀNG *</span>
+                <span className="text-[11px] font-normal text-blue-800">Linh kiện có ở {storageService.getPartLocations(selectedPart).length} vị trí</span>
               </label>
               <select
+                ref={locationSelectRef}
                 value={selectedOutLocation}
                 onChange={(e) => setSelectedOutLocation(e.target.value)}
-                className="w-full px-3 py-2 border border-blue-300 rounded-xl text-xs font-bold bg-white text-slate-800 focus:ring-2 focus:ring-blue-500 outline-hidden"
+                className="w-full px-3.5 py-2.5 border-2 border-blue-400 rounded-xl text-xs font-bold bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 outline-hidden"
               >
+                <option value="">-- Bắt buộc chọn kệ / vị trí xuất --</option>
                 {storageService.getPartLocations(selectedPart).map((loc, i) => (
                   <option key={i} value={loc.locationName}>
                     📍 {loc.locationName} — Tồn tại kệ này: {loc.quantity.toLocaleString('vi-VN')} {selectedPart.unit}
@@ -770,20 +849,29 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
 
           {/* Quantity */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
+            <label className="block text-xs font-extrabold text-slate-800 mb-1">
               Số Lượng Xuất <span className="text-red-500">*</span>
             </label>
             <input
               type="number"
               min={1}
               value={quantity}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  locationSelectRef.current?.focus();
+                }
+              }}
               onChange={(e) => setQuantity(parseInt(e.target.value) || 0)}
-              className={`w-full px-3 py-2 border rounded-xl text-base font-black focus:ring-2 outline-hidden ${
+              className={`w-full px-3.5 py-2.5 border-2 rounded-xl text-base font-black focus:ring-2 outline-hidden ${
                 isOverStock
                   ? 'bg-red-50 border-red-400 text-red-700 focus:ring-red-500'
                   : 'bg-slate-50 border-slate-300 text-blue-700 focus:ring-blue-500 focus:bg-white'
               }`}
             />
+            <p className="text-[10px] text-slate-500 mt-1">
+              💡 Gõ số lượng xong nhấn Enter để chuyển sang ô Chọn Kệ.
+            </p>
           </div>
 
           {/* Date & Time (Giờ, phút, ngày) */}
@@ -859,8 +947,12 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
         <div className="pt-3 border-t border-slate-100 flex justify-end">
           <button
             type="submit"
-            disabled={isOverStock || !selectedPart || selectedPart.currentStock === 0}
-            className="flex items-center space-x-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer"
+            disabled={isOverStock || !selectedPart || selectedPart.currentStock === 0 || !selectedOutLocation.trim() || quantity <= 0}
+            className={`flex items-center space-x-2 px-6 py-2.5 rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer ${
+              !isOverStock && selectedPart && selectedPart.currentStock > 0 && selectedOutLocation.trim() && quantity > 0
+                ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+            }`}
           >
             <ArrowUpRight className="w-4 h-4" />
             <span>Xác Nhận Xuất Kho</span>
@@ -932,6 +1024,178 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
           }
         }}
       />
+
+      {/* Printable BOM Dispatch Order Sheet Modal */}
+      {bomPrintModalData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
+          <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-4 animate-in zoom-in-95">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-pink-700 to-rose-700 text-white p-4 sm:p-5 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-amber-300 text-amber-950 rounded-2xl font-black">
+                  <Printer className="w-6 h-6 text-amber-900" />
+                </div>
+                <div>
+                  <span className="px-2.5 py-0.5 bg-amber-300 text-amber-950 text-[10px] font-extrabold rounded-md uppercase tracking-wide">
+                    PHIẾU SOẠN HÀNG XUẤT KHO FIFO
+                  </span>
+                  <h2 className="text-base sm:text-lg font-bold text-white mt-0.5">
+                    Phiếu Lệnh Xuất Kho Theo Model {bomPrintModalData.modelName}
+                  </h2>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setBomPrintModalData(null)}
+                className="p-2 text-rose-100 hover:text-white hover:bg-white/10 rounded-xl transition-all cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 sm:p-6 space-y-4 max-h-[75vh] overflow-y-auto text-slate-800 text-xs">
+              <div className="p-4 bg-pink-50 border border-pink-200 rounded-2xl flex flex-wrap items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-slate-600">Model (Lệnh SX): <strong className="text-pink-900 text-sm">{bomPrintModalData.modelName}</strong></p>
+                  <p className="text-slate-600">Người lập / xuất kho: <strong className="text-slate-900">{bomPrintModalData.person}</strong></p>
+                </div>
+                <div className="text-right space-y-1">
+                  <p className="text-slate-600">Số lượng sản xuất: <strong className="text-pink-700 text-base font-black">{bomPrintModalData.modelQty} Bộ</strong></p>
+                  <p className="text-slate-500 text-[11px]">Thời gian xuất: {new Date(bomPrintModalData.dateTime).toLocaleString('vi-VN')}</p>
+                </div>
+              </div>
+
+              {/* Items List Table */}
+              <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-2xs">
+                <table className="w-full text-left text-xs whitespace-nowrap">
+                  <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase text-[11px]">
+                    <tr>
+                      <th className="p-3 text-center w-10">STT</th>
+                      <th className="p-3">Mã Linh Kiện</th>
+                      <th className="p-3">Tên Linh Kiện</th>
+                      <th className="p-3 text-center">ĐVT</th>
+                      <th className="p-3 text-right">Định Mức</th>
+                      <th className="p-3 text-right text-emerald-800 bg-emerald-50">Tổng SL Xuất</th>
+                      <th className="p-3 text-blue-900 bg-blue-50">Vị Trí Kệ Lấy Hàng (FIFO)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {bomPrintModalData.items.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-3 text-center font-bold text-slate-500">{idx + 1}</td>
+                        <td className="p-3 font-mono font-bold text-blue-700">{item.partCode}</td>
+                        <td className="p-3 font-semibold text-slate-900">{item.partName}</td>
+                        <td className="p-3 text-center text-slate-600">{item.unit}</td>
+                        <td className="p-3 text-right font-medium text-slate-600">{item.bomQtyPerSet}</td>
+                        <td className="p-3 text-right font-black text-emerald-700 bg-emerald-50/50">
+                          {item.totalQtyOut.toLocaleString('vi-VN')}
+                        </td>
+                        <td className="p-3 font-bold text-blue-900 bg-blue-50/50">
+                          📍 {item.fifoLocation}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Footer buttons */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-slate-500 text-xs font-medium">
+                * Phiếu in sẵn sàng để bộ phận kho đi soạn hàng theo đúng kệ vị trí FIFO.
+              </span>
+              <div className="flex items-center space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setBomPrintModalData(null)}
+                  className="px-4 py-2.5 text-slate-600 hover:bg-slate-200 rounded-xl font-bold cursor-pointer transition-colors"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const html = `
+                      <div style="padding: 24px; font-family: 'Segoe UI', Arial, sans-serif; max-width: 800px; margin: 0 auto; color: #0f172a;">
+                        <div style="text-align: center; border-bottom: 3px double #1e3a8a; padding-bottom: 12px; margin-bottom: 20px;">
+                          <h2 style="margin: 0; font-size: 20px; font-weight: 800; text-transform: uppercase; color: #1e3a8a; letter-spacing: 0.5px;">PHIẾU XUẤT KHO & SOẠN HÀNG THEO MODEL (BOM)</h2>
+                          <p style="margin: 4px 0 0 0; font-size: 13px; color: #475569; font-style: italic;">Quản Lý Kho Linh Kiện - Chỉ Dẫn Soạn Hàng Chuẩn FIFO (Nhập Trước Xuất Trước)</p>
+                        </div>
+
+                        <table style="width: 100%; font-size: 13px; margin-bottom: 20px; border-collapse: collapse;">
+                          <tr>
+                            <td style="padding: 6px 0;"><strong>Tên Model (Lệnh SX):</strong> <span style="font-size: 15px; font-weight: bold; color: #1e40af;">${bomPrintModalData.modelName}</span></td>
+                            <td style="padding: 6px 0; text-align: right;"><strong>Số Lượng Sản Xuất:</strong> <span style="font-size: 16px; font-weight: 900; color: #be185d;">${bomPrintModalData.modelQty} Bộ</span></td>
+                          </tr>
+                          <tr>
+                            <td style="padding: 6px 0;"><strong>Thời Gian Thực Hiện:</strong> ${new Date(bomPrintModalData.dateTime).toLocaleString('vi-VN')}</td>
+                            <td style="padding: 6px 0; text-align: right;"><strong>Người Lập / Soạn Hàng:</strong> ${bomPrintModalData.person}</td>
+                          </tr>
+                        </table>
+
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid #cbd5e1;">
+                          <thead>
+                            <tr style="background-color: #f1f5f9; color: #0f172a; font-weight: bold; text-align: left;">
+                              <th style="border: 1px solid #cbd5e1; padding: 8px; text-align: center; width: 35px;">STT</th>
+                              <th style="border: 1px solid #cbd5e1; padding: 8px; width: 140px;">Mã Linh Kiện</th>
+                              <th style="border: 1px solid #cbd5e1; padding: 8px;">Tên Linh Kiện</th>
+                              <th style="border: 1px solid #cbd5e1; padding: 8px; text-align: center; width: 45px;">ĐVT</th>
+                              <th style="border: 1px solid #cbd5e1; padding: 8px; text-align: right; width: 75px;">Định Mức</th>
+                              <th style="border: 1px solid #cbd5e1; padding: 8px; text-align: right; width: 85px; color: #15803d; background-color: #f0fdf4;">Tổng SL Xuất</th>
+                              <th style="border: 1px solid #cbd5e1; padding: 8px; color: #1e40af; background-color: #eff6ff;">Vị Trí Kệ Lấy Hàng (FIFO)</th>
+                              <th style="border: 1px solid #cbd5e1; padding: 8px; text-align: center; width: 65px;">Đã Lấy</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            ${bomPrintModalData.items.map((item, idx) => `
+                              <tr style="border-bottom: 1px solid #e2e8f0; ${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
+                                <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: center; font-weight: bold;">${idx + 1}</td>
+                                <td style="border: 1px solid #cbd5e1; padding: 8px; font-family: monospace; font-weight: bold; color: #1d4ed8;">${item.partCode}</td>
+                                <td style="border: 1px solid #cbd5e1; padding: 8px; font-weight: 600;">${item.partName}</td>
+                                <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: center;">${item.unit}</td>
+                                <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: right;">${item.bomQtyPerSet}</td>
+                                <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: right; font-weight: bold; color: #15803d; background-color: #f0fdf4;">${item.totalQtyOut.toLocaleString('vi-VN')}</td>
+                                <td style="border: 1px solid #cbd5e1; padding: 8px; font-weight: bold; color: #1e40af; background-color: #eff6ff;">📍 ${item.fifoLocation}</td>
+                                <td style="border: 1px solid #cbd5e1; padding: 8px; text-align: center; font-size: 10px; color: #94a3b8;">[ &nbsp; ]</td>
+                              </tr>
+                            `).join('')}
+                          </tbody>
+                        </table>
+
+                        <div style="margin-top: 28px; display: flex; justify-content: space-between; font-size: 12px; text-align: center; page-break-inside: avoid;">
+                          <div style="width: 30%;">
+                            <p style="margin: 0; font-weight: bold;">Người Soạn Hàng</p>
+                            <p style="margin: 4px 0 0 0; font-size: 10px; color: #64748b;">(Ký & ghi rõ họ tên)</p>
+                            <div style="height: 55px;"></div>
+                            <p style="margin: 0; font-weight: 600;">${bomPrintModalData.person}</p>
+                          </div>
+                          <div style="width: 30%;">
+                            <p style="margin: 0; font-weight: bold;">Thủ Kho Xuất Hàng</p>
+                            <p style="margin: 4px 0 0 0; font-size: 10px; color: #64748b;">(Ký & ghi rõ họ tên)</p>
+                            <div style="height: 55px;"></div>
+                          </div>
+                          <div style="width: 30%;">
+                            <p style="margin: 0; font-weight: bold;">Đơn Vị Nhận Hàng (SX)</p>
+                            <p style="margin: 4px 0 0 0; font-size: 10px; color: #64748b;">(Ký & ghi rõ họ tên)</p>
+                            <div style="height: 55px;"></div>
+                          </div>
+                        </div>
+                      </div>
+                    `;
+                    printHtml(html);
+                  }}
+                  className="px-6 py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-xl font-bold cursor-pointer transition-all flex items-center space-x-2 shadow-md"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>🖨 IN PHIẾU SOẠN HÀNG (PRINT)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

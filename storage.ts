@@ -1,4 +1,4 @@
-import { Part, PartLocationStock, Transaction, StockCheckRecord, AppSettings, ContainerBatch, ContainerQrTag, FifoLot, ModelBOM, ModelBOMItem } from './types';
+import { Part, PartLocationStock, Transaction, StockCheckRecord, AppSettings, ContainerBatch, ContainerQrTag, FifoLot, ModelBOM, ModelBOMItem, KittingQueueItem, BufferLocationMap, MaterialCallRequest } from './types';
 import { initialParts, initialTransactions, initialSettings } from './sampleData';
 import * as XLSX from 'xlsx';
 
@@ -9,6 +9,74 @@ const SETTINGS_KEY = 'thekho_settings_v1';
 const CONTAINER_BATCHES_KEY = 'thekho_container_batches_v1';
 const USED_QR_TOKENS_KEY = 'thekho_used_qr_tokens_v1';
 const MODEL_BOMS_KEY = 'thekho_model_boms_v1';
+const KITTING_QUEUE_KEY = 'thekho_kitting_queue_v1';
+const BUFFER_MAP_KEY = 'thekho_buffer_map_v1';
+const MATERIAL_CALLS_KEY = 'thekho_material_calls_v1';
+
+const DEFAULT_BUFFER_LOCATIONS: BufferLocationMap[] = [
+  { locationId: 'BUFFER-A1-01', partCode: 'LK-RES-10K-0805', partName: 'Điện trở dán SMD 10K Ohm 0805', unit: 'Con', currentStockQty: 500, containerStandardQty: 100, status: 'READY', lastUpdated: '2026-08-04T10:00:00.000Z' },
+  { locationId: 'BUFFER-A1-02', partCode: 'LK-SEN-OPT-M12', partName: 'Cảm biến quang M12 NPN NO Omron', unit: 'Cái', currentStockQty: 20, containerStandardQty: 10, status: 'CALL_PENDING', lastUpdated: '2026-08-04T08:30:00.000Z' },
+  { locationId: 'BUFFER-A1-03', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z' },
+  { locationId: 'BUFFER-A2-01', partCode: 'LK-PLC-S71200-1214C', partName: 'Bộ điều khiển PLC Siemens S7-1200', unit: 'Bộ', currentStockQty: 5, containerStandardQty: 1, status: 'READY', lastUpdated: '2026-08-03T14:00:00.000Z' },
+  { locationId: 'BUFFER-A2-02', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z' },
+  { locationId: 'BUFFER-A2-03', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z' },
+  { locationId: 'BUFFER-B1-01', partCode: 'LK-RLY-24VDC-8P', partName: 'Rơ le trung gian 24VDC 8 chân', unit: 'Cái', currentStockQty: 80, containerStandardQty: 20, status: 'READY', lastUpdated: '2026-08-04T09:00:00.000Z' },
+  { locationId: 'BUFFER-B1-02', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z' },
+  { locationId: 'BUFFER-B1-03', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z' },
+  { locationId: 'BUFFER-B2-01', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z' },
+  { locationId: 'BUFFER-B2-02', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z' },
+  { locationId: 'BUFFER-B2-03', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z' },
+];
+
+const INITIAL_KITTING_QUEUE: KittingQueueItem[] = [
+  {
+    id: 'kit-101',
+    transactionId: 'tx-sample-01',
+    partCode: 'LK-RES-10K-0805',
+    partName: 'Điện trở dán SMD 10K Ohm 0805',
+    unit: 'Con',
+    rawQuantity: 1000,
+    kittedQuantity: 0,
+    scrapQuantity: 0,
+    bufferLocation: 'BUFFER-A1-01',
+    status: 'PENDING_KITTING',
+    operatorName: 'Lê Hoàng Nam',
+    createdAt: new Date(Date.now() - 3600000).toISOString(),
+  },
+  {
+    id: 'kit-102',
+    transactionId: 'tx-sample-02',
+    partCode: 'LK-PLC-S71200-1214C',
+    partName: 'Bộ điều khiển PLC Siemens S7-1200',
+    unit: 'Bộ',
+    rawQuantity: 5,
+    kittedQuantity: 5,
+    scrapQuantity: 0,
+    bufferLocation: 'BUFFER-A2-01',
+    status: 'IN_BUFFER',
+    startTime: new Date(Date.now() - 7200000).toISOString(),
+    endTime: new Date(Date.now() - 5400000).toISOString(),
+    durationMinutes: 30,
+    operatorName: 'Trần Văn Bình',
+    kittingProductivity: 10,
+    createdAt: new Date(Date.now() - 7200000).toISOString(),
+  },
+];
+
+const INITIAL_MATERIAL_CALLS: MaterialCallRequest[] = [
+  {
+    requestId: 'call-201',
+    assemblyLine: 'Bàn Lắp Ráp Bo Mạch Line 1',
+    partCode: 'LK-SEN-OPT-M12',
+    partName: 'Cảm biến quang M12 NPN NO Omron',
+    unit: 'Cái',
+    requestedQty: 10,
+    bufferLocation: 'BUFFER-A1-02',
+    requestedBy: 'Nguyễn Văn A (Trưởng Dây Chuyền 1)',
+    requestedAt: new Date(Date.now() - 1800000).toISOString(),
+    status: 'CALLING',
+  },
+];
 
 // Helper for initial load
 export const storageService = {
@@ -336,6 +404,13 @@ export const storageService = {
     const txs = this.getTransactions();
     txs.push(newTx);
     this.saveTransactions(txs);
+
+    // Automatically trigger Kitting Queue item for pre-assembly processing!
+    try {
+      this.addKittingQueueItemFromStockOut(newTx);
+    } catch {
+      // Ignore fallback
+    }
 
     return newTx;
   },
@@ -1091,6 +1166,253 @@ export const storageService = {
     });
 
     return fifoLots;
+  },
+
+  // --- KITTING QUEUE METHODS ---
+  getKittingQueue(): KittingQueueItem[] {
+    const raw = localStorage.getItem(KITTING_QUEUE_KEY);
+    if (!raw) {
+      localStorage.setItem(KITTING_QUEUE_KEY, JSON.stringify(INITIAL_KITTING_QUEUE));
+      return INITIAL_KITTING_QUEUE;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return INITIAL_KITTING_QUEUE;
+    }
+  },
+
+  saveKittingQueue(items: KittingQueueItem[]): void {
+    localStorage.setItem(KITTING_QUEUE_KEY, JSON.stringify(items));
+  },
+
+  addKittingQueueItemFromStockOut(tx: Transaction): KittingQueueItem {
+    const queue = this.getKittingQueue();
+    const buffers = this.getBufferLocations();
+    const existing = buffers.find((b) => b.partCode === tx.partCode && b.status !== 'EMPTY');
+    const emptyBuf = buffers.find((b) => b.status === 'EMPTY');
+    const defaultBuffer = existing ? existing.locationId : (emptyBuf ? emptyBuf.locationId : 'BUFFER-A1-01');
+
+    const newItem: KittingQueueItem = {
+      id: 'kit-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      transactionId: tx.id,
+      partCode: tx.partCode,
+      partName: tx.partName,
+      unit: tx.unit,
+      rawQuantity: tx.quantity,
+      kittedQuantity: 0,
+      scrapQuantity: 0,
+      bufferLocation: defaultBuffer,
+      status: 'PENDING_KITTING',
+      createdAt: new Date().toISOString(),
+      operatorName: tx.person || 'Lê Hoàng Nam',
+    };
+    queue.unshift(newItem);
+    this.saveKittingQueue(queue);
+    return newItem;
+  },
+
+  completeKittingItem(params: {
+    id: string;
+    kittedQuantity: number;
+    scrapQuantity: number;
+    bufferLocation: string;
+    operatorName: string;
+    durationMinutes: number;
+  }): KittingQueueItem {
+    const queue = this.getKittingQueue();
+    const idx = queue.findIndex((item) => item.id === params.id);
+    if (idx === -1) throw new Error('Không tìm thấy mục kitting');
+
+    const duration = Math.max(1, params.durationMinutes || 1);
+    const productivity = Math.round((params.kittedQuantity / (duration / 60)) * 10) / 10;
+    const nowIso = new Date().toISOString();
+
+    const updatedItem: KittingQueueItem = {
+      ...queue[idx],
+      kittedQuantity: params.kittedQuantity,
+      scrapQuantity: params.scrapQuantity,
+      bufferLocation: params.bufferLocation,
+      operatorName: params.operatorName,
+      durationMinutes: duration,
+      endTime: nowIso,
+      status: 'IN_BUFFER',
+      kittingProductivity: productivity,
+    };
+    queue[idx] = updatedItem;
+    this.saveKittingQueue(queue);
+
+    // Automatically update Buffer location stock and details
+    const buffers = this.getBufferLocations();
+    const bIdx = buffers.findIndex((b) => b.locationId === params.bufferLocation);
+    if (bIdx >= 0) {
+      buffers[bIdx] = {
+        ...buffers[bIdx],
+        partCode: updatedItem.partCode,
+        partName: updatedItem.partName,
+        unit: updatedItem.unit,
+        currentStockQty: (buffers[bIdx].partCode === updatedItem.partCode ? buffers[bIdx].currentStockQty : 0) + params.kittedQuantity,
+        status: buffers[bIdx].status === 'CALL_PENDING' ? 'CALL_PENDING' : 'READY',
+        lastUpdated: nowIso,
+      };
+      this.saveBufferLocations(buffers);
+    }
+
+    return updatedItem;
+  },
+
+  deleteKittingItem(id: string): void {
+    const queue = this.getKittingQueue().filter((q) => q.id !== id);
+    this.saveKittingQueue(queue);
+  },
+
+  // --- BUFFER LOCATION METHODS ---
+  getBufferLocations(): BufferLocationMap[] {
+    const raw = localStorage.getItem(BUFFER_MAP_KEY);
+    if (!raw) {
+      localStorage.setItem(BUFFER_MAP_KEY, JSON.stringify(DEFAULT_BUFFER_LOCATIONS));
+      return DEFAULT_BUFFER_LOCATIONS;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return DEFAULT_BUFFER_LOCATIONS;
+    }
+  },
+
+  saveBufferLocations(locs: BufferLocationMap[]): void {
+    localStorage.setItem(BUFFER_MAP_KEY, JSON.stringify(locs));
+  },
+
+  updateBufferLocation(locationId: string, data: Partial<BufferLocationMap>): BufferLocationMap {
+    const locs = this.getBufferLocations();
+    const idx = locs.findIndex((l) => l.locationId === locationId);
+    if (idx === -1) throw new Error('Không tìm thấy kệ buffer');
+
+    locs[idx] = {
+      ...locs[idx],
+      ...data,
+      lastUpdated: new Date().toISOString(),
+    };
+    this.saveBufferLocations(locs);
+    return locs[idx];
+  },
+
+  clearBufferLocation(locationId: string): void {
+    const locs = this.getBufferLocations();
+    const idx = locs.findIndex((l) => l.locationId === locationId);
+    if (idx !== -1) {
+      locs[idx] = {
+        ...locs[idx],
+        partCode: undefined,
+        partName: undefined,
+        unit: undefined,
+        currentStockQty: 0,
+        status: 'EMPTY',
+        lastUpdated: new Date().toISOString(),
+      };
+      this.saveBufferLocations(locs);
+    }
+  },
+
+  // --- MATERIAL CALL REQUEST METHODS (ANDON) ---
+  getMaterialCallRequests(): MaterialCallRequest[] {
+    const raw = localStorage.getItem(MATERIAL_CALLS_KEY);
+    if (!raw) {
+      localStorage.setItem(MATERIAL_CALLS_KEY, JSON.stringify(INITIAL_MATERIAL_CALLS));
+      return INITIAL_MATERIAL_CALLS;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return INITIAL_MATERIAL_CALLS;
+    }
+  },
+
+  saveMaterialCallRequests(reqs: MaterialCallRequest[]): void {
+    localStorage.setItem(MATERIAL_CALLS_KEY, JSON.stringify(reqs));
+  },
+
+  createMaterialCallRequest(params: {
+    assemblyLine: string;
+    partCode: string;
+    partName: string;
+    unit: string;
+    requestedQty: number;
+    bufferLocation: string;
+    requestedBy: string;
+  }): MaterialCallRequest {
+    const reqs = this.getMaterialCallRequests();
+    const newReq: MaterialCallRequest = {
+      requestId: 'call-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      assemblyLine: params.assemblyLine,
+      partCode: params.partCode,
+      partName: params.partName,
+      unit: params.unit,
+      requestedQty: params.requestedQty,
+      bufferLocation: params.bufferLocation,
+      requestedBy: params.requestedBy,
+      requestedAt: new Date().toISOString(),
+      status: 'CALLING',
+    };
+    reqs.unshift(newReq);
+    this.saveMaterialCallRequests(reqs);
+
+    // Set buffer location status to CALL_PENDING
+    const buffers = this.getBufferLocations();
+    const bIdx = buffers.findIndex((b) => b.locationId === params.bufferLocation);
+    if (bIdx >= 0) {
+      buffers[bIdx].status = 'CALL_PENDING';
+      buffers[bIdx].lastUpdated = new Date().toISOString();
+      this.saveBufferLocations(buffers);
+    }
+
+    return newReq;
+  },
+
+  updateMaterialCallStatus(requestId: string, status: 'CALLING' | 'DELIVERING' | 'COMPLETED', deliveredBy?: string): MaterialCallRequest {
+    const reqs = this.getMaterialCallRequests();
+    const idx = reqs.findIndex((r) => r.requestId === requestId);
+    if (idx === -1) throw new Error('Không tìm thấy đơn gọi hàng');
+
+    const current = reqs[idx];
+    const updated: MaterialCallRequest = {
+      ...current,
+      status,
+      deliveredBy: deliveredBy || current.deliveredBy || 'Thủ Kho Logistics',
+      deliveredAt: status === 'COMPLETED' ? new Date().toISOString() : current.deliveredAt,
+    };
+    reqs[idx] = updated;
+    this.saveMaterialCallRequests(reqs);
+
+    if (status === 'COMPLETED') {
+      // Deduct from buffer location stock
+      const buffers = this.getBufferLocations();
+      const bIdx = buffers.findIndex((b) => b.locationId === current.bufferLocation);
+      if (bIdx >= 0) {
+        const remaining = Math.max(0, buffers[bIdx].currentStockQty - current.requestedQty);
+        buffers[bIdx].currentStockQty = remaining;
+        if (remaining <= 0) {
+          buffers[bIdx].status = 'EMPTY';
+          buffers[bIdx].partCode = undefined;
+          buffers[bIdx].partName = undefined;
+        } else {
+          buffers[bIdx].status = 'READY';
+        }
+        buffers[bIdx].lastUpdated = new Date().toISOString();
+        this.saveBufferLocations(buffers);
+      }
+
+      // Update kitting queue status to DELIVERED if matching item exists
+      const queue = this.getKittingQueue();
+      const kIdx = queue.findIndex((k) => k.bufferLocation === current.bufferLocation && k.partCode === current.partCode && k.status === 'IN_BUFFER');
+      if (kIdx >= 0) {
+        queue[kIdx].status = 'DELIVERED';
+        this.saveKittingQueue(queue);
+      }
+    }
+
+    return updated;
   },
 };
 

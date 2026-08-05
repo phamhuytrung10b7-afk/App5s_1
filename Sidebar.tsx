@@ -13,6 +13,9 @@ import {
   ShieldAlert,
   Boxes,
   X,
+  Scissors,
+  LayoutGrid,
+  BellRing,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -20,6 +23,8 @@ interface SidebarProps {
   onSelectTab: (tab: ViewTab) => void;
   lowStockCount: number;
   outOfStockCount: number;
+  pendingKittingCount?: number;
+  callingAndonCount?: number;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
 }
@@ -29,10 +34,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectTab,
   lowStockCount,
   outOfStockCount,
+  pendingKittingCount = 0,
+  callingAndonCount = 0,
   isOpenMobile = false,
   onCloseMobile,
 }) => {
-  const menuItems: { id: ViewTab; label: string; icon: React.ElementType; badge?: number; badgeColor?: string }[] = [
+  const menuItems: { id: ViewTab; label: string; icon: React.ElementType; badge?: number; badgeColor?: string; section?: string }[] = [
     { id: 'dashboard', label: 'Trang chủ', icon: Home },
     {
       id: 'parts',
@@ -43,7 +50,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     { id: 'stock_in', label: 'Nhập kho', icon: ArrowDownLeft },
     { id: 'stock_out', label: 'Xuất kho', icon: ArrowUpRight },
-    { id: 'bin_card', label: 'Lịch sử / Thẻ kho', icon: History },
+    {
+      id: 'kitting',
+      label: 'Khu Bóc Tách (Kitting)',
+      icon: Scissors,
+      badge: pendingKittingCount > 0 ? pendingKittingCount : undefined,
+      badgeColor: 'bg-purple-600',
+      section: 'Kitting & Logistics Buffer',
+    },
+    { id: 'buffer', label: 'Sơ Đồ Kệ OUTBUFFER', icon: LayoutGrid },
+    {
+      id: 'andon',
+      label: 'Gọi & Giao Hàng (Andon)',
+      icon: BellRing,
+      badge: callingAndonCount > 0 ? callingAndonCount : undefined,
+      badgeColor: 'bg-amber-500 animate-pulse',
+    },
+    { id: 'bin_card', label: 'Lịch sử / Thẻ kho', icon: History, section: 'Báo Cáo & Quản Lý' },
     { id: 'warehouse_map', label: 'Sơ đồ kho (Vị trí)', icon: MapPin },
     { id: 'reports', label: 'Báo cáo', icon: BarChart3 },
     { id: 'settings', label: 'Cài đặt & Dữ liệu', icon: Settings },
@@ -88,29 +111,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
           const Icon = item.icon;
           const isActive = currentTab === item.id;
           return (
-            <button
-              key={item.id}
-              onClick={() => handleSelect(item.id)}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold transition-colors duration-150 group cursor-pointer ${
-                isActive
-                  ? 'bg-blue-50 text-blue-700 shadow-xs border border-blue-200/60'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              }`}
-            >
-              <div className="flex items-center space-x-3">
-                <Icon className={`w-5 h-5 transition-transform duration-150 ${isActive ? 'scale-105 text-blue-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
-                <span>{item.label}</span>
-              </div>
-              {item.badge !== undefined && (
-                <span
-                  className={`px-2 py-0.5 text-xs font-bold text-white rounded-full ${
-                    item.badgeColor || 'bg-amber-500'
-                  }`}
-                >
-                  {item.badge}
-                </span>
+            <React.Fragment key={item.id}>
+              {item.section && (
+                <div className="px-3 pt-3 pb-1 text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
+                  {item.section}
+                </div>
               )}
-            </button>
+              <button
+                onClick={() => handleSelect(item.id)}
+                className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors duration-150 group cursor-pointer ${
+                  isActive
+                    ? 'bg-blue-50 text-blue-700 shadow-xs border border-blue-200/60'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <Icon className={`w-5 h-5 transition-transform duration-150 ${isActive ? 'scale-105 text-blue-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                  <span>{item.label}</span>
+                </div>
+                {item.badge !== undefined && (
+                  <span
+                    className={`px-2 py-0.5 text-xs font-bold text-white rounded-full ${
+                      item.badgeColor || 'bg-amber-500'
+                    }`}
+                  >
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            </React.Fragment>
           );
         })}
       </nav>

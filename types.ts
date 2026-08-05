@@ -79,10 +79,58 @@ export type ViewTab =
   | 'parts'
   | 'stock_in'
   | 'stock_out'
+  | 'kitting'
+  | 'buffer'
+  | 'andon'
   | 'bin_card'
   | 'warehouse_map'
   | 'reports'
   | 'settings';
+
+export interface KittingQueueItem {
+  id: string;
+  transactionId: string; // liên kết phiếu Xuất Kho thô gốc
+  partCode: string;
+  partName: string;
+  unit: string;
+  rawQuantity: number; // SL xuất thô carton
+  kittedQuantity: number; // SL thực tế bóc đóng thùng xanh
+  scrapQuantity: number; // SL phế phẩm/hỏng do móp vỡ thùng thô
+  bufferLocation: string; // Mã kệ OUTBUFFER, ví dụ: BUFFER-A1-02
+  status: 'PENDING_KITTING' | 'IN_BUFFER' | 'DELIVERED';
+  startTime?: string;
+  endTime?: string;
+  durationMinutes?: number; // Thời gian bóc tách
+  operatorName?: string; // Tên nhân viên bóc tách
+  kittingProductivity?: number; // PCS/Giờ = kittedQuantity / (durationMinutes / 60)
+  createdAt: string;
+}
+
+export interface BufferLocationMap {
+  locationId: string; // e.g. BUFFER-A1-01
+  partCode?: string;
+  partName?: string;
+  unit?: string;
+  currentStockQty: number;
+  containerStandardQty: number; // Quy cách thùng xanh (e.g. 50 cái/thùng)
+  status: 'EMPTY' | 'READY' | 'CALL_PENDING';
+  lastUpdated: string; // Dùng kiểm soát FIFO tại Buffer
+}
+
+export interface MaterialCallRequest {
+  requestId: string;
+  assemblyLine: string; // Dây chuyền/Bàn máy gọi
+  partCode: string;
+  partName: string;
+  unit: string;
+  requestedQty: number;
+  bufferLocation: string; // Kệ Buffer lấy hàng
+  requestedBy: string;
+  requestedAt: string;
+  status: 'CALLING' | 'DELIVERING' | 'COMPLETED';
+  deliveredBy?: string;
+  deliveredAt?: string;
+}
 
 export interface ContainerQrTag {
   id: string; // Token ID e.g. "TAG-GAOU7800407-LK001-xxxx"

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Part, Transaction, AppSettings, ViewTab } from './types';
+import { Part, Transaction, AppSettings, ViewTab, KittingQueueItem, BufferLocationMap, MaterialCallRequest } from './types';
 import { storageService } from './storage';
 
 import { Sidebar } from './Sidebar';
@@ -12,6 +12,9 @@ import { DashboardView } from './DashboardView';
 import { PartsListView } from './PartsListView';
 import { StockInView } from './StockInView';
 import { StockOutView } from './StockOutView';
+import { KittingView } from './KittingView';
+import { BufferMapView } from './BufferMapView';
+import { AndonCallView } from './AndonCallView';
 import { BinCardHistoryView } from './BinCardHistoryView';
 import { WarehouseMapView } from './WarehouseMapView';
 import { ReportsView } from './ReportsView';
@@ -21,6 +24,9 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<ViewTab>('dashboard');
   const [parts, setParts] = useState<Part[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [kittingQueue, setKittingQueue] = useState<KittingQueueItem[]>([]);
+  const [bufferLocations, setBufferLocations] = useState<BufferLocationMap[]>([]);
+  const [materialCalls, setMaterialCalls] = useState<MaterialCallRequest[]>([]);
   const [settings, setSettings] = useState<AppSettings>(storageService.getSettings());
   const [searchTerm, setSearchTerm] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -41,6 +47,9 @@ export default function App() {
   const refreshData = useCallback(() => {
     setParts(storageService.getParts());
     setTransactions(storageService.getTransactions());
+    setKittingQueue(storageService.getKittingQueue());
+    setBufferLocations(storageService.getBufferLocations());
+    setMaterialCalls(storageService.getMaterialCallRequests());
     setSettings(storageService.getSettings());
   }, []);
 
@@ -79,9 +88,11 @@ export default function App() {
     }
   };
 
-  // Low & Out stock counts for badge
+  // Badge counts
   const lowStockCount = parts.filter((p) => p.currentStock > 0 && p.currentStock <= p.minStock).length;
   const outOfStockCount = parts.filter((p) => p.currentStock === 0).length;
+  const pendingKittingCount = kittingQueue.filter((k) => k.status === 'PENDING_KITTING').length;
+  const callingAndonCount = materialCalls.filter((m) => m.status === 'CALLING').length;
 
   return (
     <div className="flex h-screen bg-slate-100 font-sans text-slate-800 antialiased overflow-hidden">
@@ -91,6 +102,8 @@ export default function App() {
         onSelectTab={setCurrentTab}
         lowStockCount={lowStockCount}
         outOfStockCount={outOfStockCount}
+        pendingKittingCount={pendingKittingCount}
+        callingAndonCount={callingAndonCount}
         isOpenMobile={isMobileMenuOpen}
         onCloseMobile={() => setIsMobileMenuOpen(false)}
       />
@@ -111,7 +124,7 @@ export default function App() {
         />
 
         {/* View Router Body */}
-        <main className="flex-1 pb-12">
+        <main className="flex-1 pb-12 p-4 sm:p-6 max-w-7xl mx-auto w-full">
           {currentTab === 'dashboard' && (
             <DashboardView
               parts={parts}
@@ -150,6 +163,31 @@ export default function App() {
 
           {currentTab === 'stock_out' && (
             <StockOutView parts={parts} settings={settings} onSuccess={refreshData} />
+          )}
+
+          {currentTab === 'kitting' && (
+            <KittingView
+              queue={kittingQueue}
+              settings={settings}
+              buffers={bufferLocations}
+              onRefresh={refreshData}
+            />
+          )}
+
+          {currentTab === 'buffer' && (
+            <BufferMapView
+              buffers={bufferLocations}
+              onRefresh={refreshData}
+            />
+          )}
+
+          {currentTab === 'andon' && (
+            <AndonCallView
+              materialCalls={materialCalls}
+              buffers={bufferLocations}
+              settings={settings}
+              onRefresh={refreshData}
+            />
           )}
 
 

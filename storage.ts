@@ -1,4 +1,4 @@
-import { Part, PartLocationStock, Transaction, StockCheckRecord, AppSettings, ContainerBatch, ContainerQrTag, FifoLot, ModelBOM, ModelBOMItem, KittingQueueItem, BufferLocationMap, BufferPartItem, MaterialCallRequest } from './types';
+import { Part, PartLocationStock, Transaction, StockCheckRecord, AppSettings, ContainerBatch, ContainerQrTag, FifoLot, ModelBOM, ModelBOMItem, KittingQueueItem, BufferLocationMap, BufferPartItem, MaterialCallRequest, BomExportVoucher, BomExportVoucherItem } from './types';
 import { initialParts, initialTransactions, initialSettings } from './sampleData';
 import * as XLSX from 'xlsx';
 
@@ -12,6 +12,7 @@ const MODEL_BOMS_KEY = 'thekho_model_boms_v1';
 const KITTING_QUEUE_KEY = 'thekho_kitting_queue_v1';
 const BUFFER_MAP_KEY = 'thekho_buffer_map_v1';
 const MATERIAL_CALLS_KEY = 'thekho_material_calls_v1';
+const BOM_VOUCHERS_KEY = 'thekho_bom_vouchers_v1';
 
 const DEFAULT_BUFFER_LOCATIONS: BufferLocationMap[] = [
   {
@@ -1718,6 +1719,58 @@ export const storageService = {
     }
 
     return updated;
+  },
+
+  // --- BOM EXPORT VOUCHERS STORAGE ---
+  getBomExportVouchers(): BomExportVoucher[] {
+    const data = localStorage.getItem(BOM_VOUCHERS_KEY);
+    if (!data) return [];
+    try {
+      return JSON.parse(data);
+    } catch {
+      return [];
+    }
+  },
+
+  saveBomExportVouchers(vouchers: BomExportVoucher[]): void {
+    localStorage.setItem(BOM_VOUCHERS_KEY, JSON.stringify(vouchers));
+  },
+
+  addBomExportVoucher(params: {
+    modelName: string;
+    modelQty: number;
+    dateTime: string;
+    person: string;
+    items: BomExportVoucherItem[];
+  }): BomExportVoucher {
+    const vouchers = this.getBomExportVouchers();
+    const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const todayCount = vouchers.filter((v) => v.createdAt && v.createdAt.startsWith(new Date().toISOString().slice(0, 10))).length + 1;
+    const voucherCode = `PXK-BOM-${todayStr}-${String(todayCount).padStart(3, '0')}`;
+
+    const totalQtyOut = params.items.reduce((sum, i) => sum + (i.totalQtyOut || 0), 0);
+
+    const newVoucher: BomExportVoucher = {
+      id: 'vxk-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+      voucherCode,
+      modelName: params.modelName,
+      modelQty: params.modelQty,
+      createdAt: new Date().toISOString(),
+      dateTime: params.dateTime || new Date().toISOString(),
+      person: params.person,
+      items: params.items,
+      totalPartsCount: params.items.length,
+      totalQtyOut,
+    };
+
+    vouchers.unshift(newVoucher);
+    this.saveBomExportVouchers(vouchers);
+    return newVoucher;
+  },
+
+  deleteBomExportVoucher(id: string): void {
+    const vouchers = this.getBomExportVouchers().filter((v) => v.id !== id);
+    this.saveBomExportVouchers(vouchers);
   },
 };
 

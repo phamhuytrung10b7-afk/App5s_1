@@ -290,10 +290,41 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
     }
   };
 
-  // Filter requests
-  const callingReqs = materialCalls.filter((m) => m.status === 'CALLING');
+  // Filter requests with strict FIFO ordering (oldest call requestedAt first)
+  const callingReqs = materialCalls
+    .filter((m) => m.status === 'CALLING')
+    .sort((a, b) => new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime());
   const deliveringReqs = materialCalls.filter((m) => m.status === 'DELIVERING');
   const completedReqs = materialCalls.filter((m) => m.status === 'COMPLETED');
+
+  const formatVietnamDateTime = (isoString: string) => {
+    if (!isoString) return 'Chưa ghi nhận';
+    try {
+      const d = new Date(isoString);
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      const seconds = String(d.getSeconds()).padStart(2, '0');
+      return `${hours}:${minutes}:${seconds} - ${day}/${month}/${year}`;
+    } catch {
+      return isoString;
+    }
+  };
+
+  const getRelativeTimeString = (isoString: string) => {
+    if (!isoString) return '';
+    const diffMs = new Date().getTime() - new Date(isoString).getTime();
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    if (diffMinutes < 1) return 'Vừa mới gọi';
+    if (diffMinutes < 60) return `Cách đây ${diffMinutes} phút`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    const remMinutes = diffMinutes % 60;
+    if (diffHours < 24) return `Cách đây ${diffHours} giờ ${remMinutes > 0 ? `${remMinutes}p` : ''}`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `Cách đây ${diffDays} ngày`;
+  };
 
   return (
     <div className="space-y-6">
@@ -428,12 +459,17 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Calling Requests */}
               <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <h3 className="font-extrabold text-sm text-slate-900 flex items-center space-x-2">
-                    <Bell className="w-4 h-4 text-red-500 animate-pulse" />
-                    <span>Đơn Yêu Cầu Đang Gọi (Chờ Nhận)</span>
-                  </h3>
-                  <span className="text-xs font-bold text-red-600 bg-red-50 px-2.5 py-0.5 rounded-full border border-red-200">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-2 gap-1">
+                  <div>
+                    <h3 className="font-extrabold text-sm text-slate-900 flex items-center space-x-2">
+                      <Bell className="w-4 h-4 text-red-500 animate-pulse" />
+                      <span>Đơn Yêu Cầu Đang Gọi (Chờ Nhận)</span>
+                    </h3>
+                    <p className="text-[11px] text-slate-500 italic">
+                      * Tự động ưu tiên FIFO: Gọi trước sẽ đứng đầu danh sách để giao trước
+                    </p>
+                  </div>
+                  <span className="text-xs font-bold text-red-600 bg-red-50 px-2.5 py-0.5 rounded-full border border-red-200 self-start sm:self-auto">
                     {callingReqs.length} Đơn
                   </span>
                 </div>
@@ -443,21 +479,50 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
                     Hiện không có yêu cầu gọi hàng mới từ Dây Chuyền.
                   </div>
                 ) : (
-                  callingReqs.map((req) => (
+                  callingReqs.map((req, idx) => (
                     <div
                       key={req.requestId}
                       className="p-5 bg-white border-2 border-red-200 rounded-2xl shadow-xs hover:shadow-md transition-all space-y-3 relative overflow-hidden"
                     >
-                      {req.isDirectKitting ? (
-                        <div className="absolute top-0 right-0 px-3 py-1 bg-amber-500 text-slate-950 text-[10px] font-black uppercase rounded-bl-xl tracking-wider shadow-xs flex items-center space-x-1">
+                      {/* Priority Badge */}
+                      <div className="flex items-center justify-between gap-2 pb-2 border-b border-red-100">
+                        <span
+                          className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider shadow-xs flex items-center space-x-1 ${
+                            idx === 0
+                              ? 'bg-red-600 text-white ring-2 ring-red-400 animate-pulse'
+                              : idx === 1
+                              ? 'bg-amber-500 text-slate-950 font-black'
+                              : 'bg-slate-700 text-white font-bold'
+                          }`}
+                        >
                           <Zap className="w-3 h-3" />
-                          <span>BÓC TÁCH & GIAO THẲNG</span>
+                          <span>
+                            {idx === 0 ? 'ƯU TIÊN #1 (GỌI ĐẦU TIÊN - CẦN PHÁT HÀNG TRƯỚC)' : `ƯU TIÊN #${idx + 1}`}
+                          </span>
+                        </span>
+                        {req.isDirectKitting ? (
+                          <span className="px-2.5 py-0.5 bg-amber-100 text-amber-900 text-[10px] font-black uppercase rounded-md tracking-wide">
+                            📦 BÓC TÁCH KITTING
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-0.5 bg-red-100 text-red-900 text-[10px] font-black uppercase rounded-md tracking-wide">
+                            ⚡ OUTBUFFER
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Call Timestamp Highlight */}
+                      <div className="p-2.5 bg-rose-50/90 border border-rose-200 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center space-x-2 text-slate-800">
+                          <Clock className="w-4 h-4 text-red-600 shrink-0 animate-spin-slow" />
+                          <span>
+                            Ngày giờ gọi: <strong className="font-mono font-extrabold text-slate-900">{formatVietnamDateTime(req.requestedAt)}</strong>
+                          </span>
                         </div>
-                      ) : (
-                        <div className="absolute top-0 right-0 px-3 py-1 bg-red-600 text-white text-[10px] font-black uppercase rounded-bl-xl tracking-wider shadow-xs">
-                          ⚡ CẤP TỪ OUTBUFFER
-                        </div>
-                      )}
+                        <span className="text-[11px] font-extrabold text-red-700 bg-white px-2 py-0.5 rounded-md border border-red-200">
+                          ⏱ {getRelativeTimeString(req.requestedAt)}
+                        </span>
+                      </div>
 
                       <div className="space-y-1">
                         <span className="text-amber-800 font-bold text-[11px] block">

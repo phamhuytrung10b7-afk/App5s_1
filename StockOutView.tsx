@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Part, AppSettings } from './types';
+import { Part, AppSettings, BomExportVoucher } from './types';
 import { storageService } from './storage';
 import { ArrowUpRight, CheckCircle2, AlertTriangle, AlertCircle, Package, Clock, User, FileCode, FileText, QrCode, Zap, Printer, X } from 'lucide-react';
 import { SearchableSelect, SelectOption } from './SearchableSelect';
@@ -46,6 +46,7 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
 
   // Printable BOM Dispatch Order Sheet Modal State
   const [bomPrintModalData, setBomPrintModalData] = useState<{
+    voucherCode?: string;
     modelName: string;
     modelQty: number;
     dateTime: string;
@@ -59,6 +60,15 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
       fifoLocation: string;
     }>;
   } | null>(null);
+
+  // Saved BOM Export Vouchers History State
+  const [savedVouchers, setSavedVouchers] = useState<BomExportVoucher[]>(() => storageService.getBomExportVouchers());
+  const [isVoucherHistoryOpen, setIsVoucherHistoryOpen] = useState(false);
+  const [searchVoucherTerm, setSearchVoucherTerm] = useState('');
+
+  const refreshSavedVouchers = () => {
+    setSavedVouchers(storageService.getBomExportVouchers());
+  };
 
   // Stock Out Scan Modal States
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
@@ -533,18 +543,30 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
                         }
                       });
 
-                      setMessage({
-                        type: 'success',
-                        text: `🎉 Đã tiêu hao tồn kho thành công ${totalOut} linh kiện cho Model ${selectedBom.name}! Đã tạo xong Phiếu Soạn Hàng FIFO.`,
-                      });
-
-                      // Open printable dispatch sheet modal
-                      setBomPrintModalData({
+                      // Save voucher to persistent history
+                      const savedVoucher = storageService.addBomExportVoucher({
                         modelName: selectedBom.name,
                         modelQty,
                         dateTime: dateTime || new Date().toISOString(),
                         person: person.trim() || 'Lê Hoàng Nam',
                         items: printedItems,
+                      });
+
+                      refreshSavedVouchers();
+
+                      setMessage({
+                        type: 'success',
+                        text: `🎉 Đã tiêu hao tồn kho thành công ${totalOut} linh kiện cho Model ${selectedBom.name}! Đã tự động lưu Phiếu Xuất BOM [${savedVoucher.voucherCode}].`,
+                      });
+
+                      // Open printable dispatch sheet modal
+                      setBomPrintModalData({
+                        voucherCode: savedVoucher.voucherCode,
+                        modelName: savedVoucher.modelName,
+                        modelQty: savedVoucher.modelQty,
+                        dateTime: savedVoucher.dateTime,
+                        person: savedVoucher.person,
+                        items: savedVoucher.items,
                       });
 
                       setModelQty(1);
@@ -561,6 +583,147 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
               </div>
             </div>
           )}
+
+          {/* Saved BOM Export Vouchers History Section */}
+          {(() => {
+            const filteredVouchers = savedVouchers.filter(
+              (v) =>
+                !searchVoucherTerm ||
+                v.voucherCode.toLowerCase().includes(searchVoucherTerm.toLowerCase()) ||
+                v.modelName.toLowerCase().includes(searchVoucherTerm.toLowerCase()) ||
+                v.person.toLowerCase().includes(searchVoucherTerm.toLowerCase())
+            );
+
+            return (
+              <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2.5 bg-pink-100 text-pink-700 rounded-2xl">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black text-slate-900 flex items-center space-x-2">
+                        <span>Lịch Sử Phiếu Xuất Kho BOM (Đã Lưu)</span>
+                        <span className="px-2.5 py-0.5 bg-pink-100 text-pink-800 text-xs font-black rounded-full">
+                          {savedVouchers.length} Phiếu
+                        </span>
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Tất cả phiếu xuất kho soạn hàng theo BOM đều được tự động lưu lại. Bạn có thể tra cứu và in lại bất kỳ lúc nào nếu lỡ đóng phiếu.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2 w-full sm:w-auto">
+                    <input
+                      type="text"
+                      value={searchVoucherTerm}
+                      onChange={(e) => setSearchVoucherTerm(e.target.value)}
+                      placeholder="Tìm mã phiếu / model / người lập..."
+                      className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-pink-500 w-full sm:w-60"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsVoucherHistoryOpen(!isVoucherHistoryOpen)}
+                      className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white font-bold rounded-xl text-xs transition-all cursor-pointer flex items-center space-x-1.5 shadow-xs shrink-0"
+                    >
+                      <Clock className="w-4 h-4" />
+                      <span>{isVoucherHistoryOpen ? 'Thu Gọn' : 'Xem Lịch Sử & In Lại'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {isVoucherHistoryOpen && (
+                  <div className="space-y-3 animate-in fade-in duration-200 pt-2">
+                    {filteredVouchers.length === 0 ? (
+                      <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200 italic text-xs">
+                        {searchVoucherTerm ? 'Không tìm thấy phiếu xuất kho nào phù hợp.' : 'Chưa có phiếu xuất kho BOM nào trong lịch sử lưu trữ.'}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {filteredVouchers.map((v) => (
+                          <div
+                            key={v.id}
+                            className="p-4 bg-slate-50 hover:bg-pink-50/50 border border-slate-200 hover:border-pink-300 rounded-2xl transition-all space-y-3 flex flex-col justify-between"
+                          >
+                            <div className="space-y-2">
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <span className="font-mono font-black text-pink-700 text-xs px-2 py-0.5 bg-pink-100 rounded-md inline-block">
+                                    {v.voucherCode}
+                                  </span>
+                                  <h4 className="font-extrabold text-slate-900 text-sm mt-1">
+                                    Model: <span className="text-blue-700 font-bold">{v.modelName}</span>
+                                  </h4>
+                                </div>
+                                <span className="px-2.5 py-1 bg-pink-600 text-white text-xs font-black rounded-lg shrink-0">
+                                  {v.modelQty} Bộ
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 bg-white p-2.5 rounded-xl border border-slate-200/80">
+                                <div>
+                                  <span className="text-slate-400 block text-[10px]">Thời gian lập:</span>
+                                  <strong className="font-semibold text-slate-800 font-mono">
+                                    {new Date(v.dateTime || v.createdAt).toLocaleString('vi-VN')}
+                                  </strong>
+                                </div>
+                                <div>
+                                  <span className="text-slate-400 block text-[10px]">Người lập:</span>
+                                  <strong className="font-semibold text-slate-800">{v.person}</strong>
+                                </div>
+                                <div>
+                                  <span className="text-slate-400 block text-[10px]">Số loại LK:</span>
+                                  <strong className="font-bold text-indigo-700">{v.totalPartsCount || v.items.length} loại</strong>
+                                </div>
+                                <div>
+                                  <span className="text-slate-400 block text-[10px]">Tổng SL xuất:</span>
+                                  <strong className="font-bold text-emerald-700">{(v.totalQtyOut || 0).toLocaleString('vi-VN')}</strong>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-2 border-t border-slate-200/60">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm(`Bạn có chắc muốn xóa lịch sử phiếu ${v.voucherCode}?`)) {
+                                    storageService.deleteBomExportVoucher(v.id);
+                                    refreshSavedVouchers();
+                                  }
+                                }}
+                                className="px-2.5 py-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                              >
+                                Xóa phiếu
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBomPrintModalData({
+                                    voucherCode: v.voucherCode,
+                                    modelName: v.modelName,
+                                    modelQty: v.modelQty,
+                                    dateTime: v.dateTime,
+                                    person: v.person,
+                                    items: v.items,
+                                  });
+                                }}
+                                className="px-3.5 py-1.5 bg-pink-600 hover:bg-pink-700 text-white font-bold rounded-xl text-xs transition-all cursor-pointer flex items-center space-x-1.5 shadow-xs"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                                <span>IN LẠI / XEM PHIẾU</span>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -1057,6 +1220,11 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
             <div className="p-4 sm:p-6 space-y-4 max-h-[75vh] overflow-y-auto text-slate-800 text-xs">
               <div className="p-4 bg-pink-50 border border-pink-200 rounded-2xl flex flex-wrap items-center justify-between gap-4">
                 <div className="space-y-1">
+                  {bomPrintModalData.voucherCode && (
+                    <span className="px-2.5 py-1 bg-pink-200 text-pink-900 font-mono font-black text-xs rounded-md inline-block mb-1">
+                      Mã Phiếu: {bomPrintModalData.voucherCode}
+                    </span>
+                  )}
                   <p className="text-slate-600">Model (Lệnh SX): <strong className="text-pink-900 text-sm">{bomPrintModalData.modelName}</strong></p>
                   <p className="text-slate-600">Người lập / xuất kho: <strong className="text-slate-900">{bomPrintModalData.person}</strong></p>
                 </div>
@@ -1121,6 +1289,7 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
                       <div style="padding: 24px; font-family: 'Segoe UI', Arial, sans-serif; max-width: 800px; margin: 0 auto; color: #0f172a;">
                         <div style="text-align: center; border-bottom: 3px double #1e3a8a; padding-bottom: 12px; margin-bottom: 20px;">
                           <h2 style="margin: 0; font-size: 20px; font-weight: 800; text-transform: uppercase; color: #1e3a8a; letter-spacing: 0.5px;">PHIẾU XUẤT KHO & SOẠN HÀNG THEO MODEL (BOM)</h2>
+                          ${bomPrintModalData.voucherCode ? `<p style="margin: 4px 0 0 0; font-size: 14px; font-family: monospace; font-weight: bold; color: #1e3a8a;">[ MÃ PHIẾU: ${bomPrintModalData.voucherCode} ]</p>` : ''}
                           <p style="margin: 4px 0 0 0; font-size: 13px; color: #475569; font-style: italic;">Quản Lý Kho Linh Kiện - Chỉ Dẫn Soạn Hàng Chuẩn FIFO (Nhập Trước Xuất Trước)</p>
                         </div>
 

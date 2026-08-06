@@ -212,3 +212,25 @@ export interface StockCheckRecord {
   status?: string;
   note?: string;
 }
+
+export interface BomExportVoucherItem {
+  partCode: string;
+  partName: string;
+  unit: string;
+  bomQtyPerSet: number;
+  totalQtyOut: number;
+  fifoLocation: string;
+}
+
+export interface BomExportVoucher {
+  id: string; // e.g. "vxk-1721000..."
+  voucherCode: string; // e.g. "PXK-BOM-20260806-001"
+  modelName: string;
+  modelQty: number;
+  createdAt: string; // ISO timestamp
+  dateTime: string;
+  person: string;
+  items: BomExportVoucherItem[];
+  totalPartsCount: number;
+  totalQtyOut: number;
+}

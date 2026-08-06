@@ -185,8 +185,10 @@ export default function App() {
             <AndonCallView
               materialCalls={materialCalls}
               buffers={bufferLocations}
+              parts={parts}
               settings={settings}
               onRefresh={refreshData}
+              onNavigateToSettings={() => setCurrentTab('settings')}
             />
           )}
 

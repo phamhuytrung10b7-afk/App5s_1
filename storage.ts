@@ -96,6 +96,7 @@ export const storageService = {
         stockInReasons: parsed.stockInReasons && parsed.stockInReasons.length ? parsed.stockInReasons : initialSettings.stockInReasons,
         stockOutPurposes: parsed.stockOutPurposes && parsed.stockOutPurposes.length ? parsed.stockOutPurposes : initialSettings.stockOutPurposes,
         productionOrders: parsed.productionOrders && parsed.productionOrders.length ? parsed.productionOrders : initialSettings.productionOrders,
+        assemblyLines: parsed.assemblyLines && parsed.assemblyLines.length ? parsed.assemblyLines : initialSettings.assemblyLines,
       };
     } catch {
       return initialSettings;
@@ -1315,6 +1316,122 @@ export const storageService = {
     }
   },
 
+  addBufferLocation(data: { locationId: string; description?: string; containerStandardQty?: number }): BufferLocationMap {
+    const locs = this.getBufferLocations();
+    const cleanId = data.locationId.trim();
+    if (!cleanId) throw new Error('Vui lòng nhập Tên vị trí / Mã kệ!');
+    const existing = locs.find((l) => l.locationId.toLowerCase() === cleanId.toLowerCase());
+    if (existing) throw new Error(`Vị trí kệ "${cleanId}" đã tồn tại trên sơ đồ!`);
+
+    const newLoc: BufferLocationMap = {
+      locationId: cleanId,
+      description: data.description?.trim() || undefined,
+      currentStockQty: 0,
+      containerStandardQty: data.containerStandardQty || 50,
+      status: 'EMPTY',
+      lastUpdated: new Date().toISOString(),
+    };
+    locs.push(newLoc);
+    this.saveBufferLocations(locs);
+    return newLoc;
+  },
+
+  deleteBufferLocation(locationId: string): void {
+    const locs = this.getBufferLocations();
+    const idx = locs.findIndex((l) => l.locationId === locationId);
+    if (idx === -1) throw new Error('Không tìm thấy kệ buffer');
+
+    const target = locs[idx];
+    if (target.currentStockQty > 0 || (target.partCode && target.partCode.trim() !== '')) {
+      throw new Error(`Kệ "${locationId}" đang chứa linh kiện (${target.partCode || 'Linh kiện'} - Tồn: ${target.currentStockQty} ${target.unit || 'PCS'}), KHÔNG CHO PHÉP XÓA KỆ! Vui lòng dọn trống hoặc xuất linh kiện trước khi xóa.`);
+    }
+
+    const updated = locs.filter((l) => l.locationId !== locationId);
+    this.saveBufferLocations(updated);
+  },
+
+  importBufferLocationsFromRows(rawRows: any[]): { added: number; updated: number } {
+    const locs = this.getBufferLocations();
+    let added = 0;
+    let updated = 0;
+
+    rawRows.forEach((row) => {
+      let locName = '';
+      let desc = '';
+
+      if (Array.isArray(row)) {
+        locName = String(row[0] ?? '').trim();
+        desc = String(row[1] ?? '').trim();
+      } else if (typeof row === 'object' && row !== null) {
+        locName = String(
+          row['Tên vị trí'] || row['Tên Vị Trí'] || row['Location'] || row['Mã kệ'] || row['Mã Kệ'] || row['Tên kệ'] || row['Name'] || row['Kệ'] || ''
+        ).trim();
+        desc = String(
+          row['Mô tả vị trí'] || row['Mô Tả Vị Trí'] || row['Mô tả'] || row['Mô Tả'] || row['Description'] || ''
+        ).trim();
+      }
+
+      if (!locName) return;
+      const lower = locName.toLowerCase();
+      if (lower === 'tên vị trí' || lower === 'location' || lower === 'mã kệ') return;
+
+      const existingIdx = locs.findIndex((l) => l.locationId.toLowerCase() === lower);
+      if (existingIdx !== -1) {
+        locs[existingIdx] = {
+          ...locs[existingIdx],
+          locationId: locName,
+          description: desc || locs[existingIdx].description,
+          lastUpdated: new Date().toISOString(),
+        };
+        updated++;
+      } else {
+        locs.push({
+          locationId: locName,
+          description: desc || undefined,
+          currentStockQty: 0,
+          containerStandardQty: 50,
+          status: 'EMPTY',
+          lastUpdated: new Date().toISOString(),
+        });
+        added++;
+      }
+    });
+
+    this.saveBufferLocations(locs);
+    return { added, updated };
+  },
+
+  downloadBufferImportTemplate(): void {
+    const templateData = [
+      {
+        'Tên vị trí': 'Kệ 1',
+        'Mô tả vị trí': 'Khoang 01 - Tầng 1 - Vị trí 1',
+      },
+      {
+        'Tên vị trí': 'Kệ 2',
+        'Mô tả vị trí': 'Khoang 01 - Tầng 1 - Vị trí 2',
+      },
+      {
+        'Tên vị trí': 'BUFFER-A1-01',
+        'Mô tả vị trí': 'Khu vực A - Tầng 1 - Ô 01',
+      },
+      {
+        'Tên vị trí': 'BUFFER-A1-02',
+        'Mô tả vị trí': 'Khu vực A - Tầng 1 - Ô 02',
+      },
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    ws['!cols'] = [
+      { wch: 25 }, // Tên vị trí
+      { wch: 45 }, // Mô tả vị trí
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'KhaiBaoViTriKe');
+    XLSX.writeFile(wb, 'mau_khai_bao_vi_tri_ke_outbuffer.xlsx');
+  },
+
   // --- MATERIAL CALL REQUEST METHODS (ANDON) ---
   getMaterialCallRequests(): MaterialCallRequest[] {
     const raw = localStorage.getItem(MATERIAL_CALLS_KEY);
@@ -1340,6 +1457,7 @@ export const storageService = {
     unit: string;
     requestedQty: number;
     bufferLocation: string;
+    isDirectKitting?: boolean;
     requestedBy: string;
   }): MaterialCallRequest {
     const reqs = this.getMaterialCallRequests();
@@ -1351,6 +1469,7 @@ export const storageService = {
       unit: params.unit,
       requestedQty: params.requestedQty,
       bufferLocation: params.bufferLocation,
+      isDirectKitting: params.isDirectKitting || false,
       requestedBy: params.requestedBy,
       requestedAt: new Date().toISOString(),
       status: 'CALLING',
@@ -1358,13 +1477,15 @@ export const storageService = {
     reqs.unshift(newReq);
     this.saveMaterialCallRequests(reqs);
 
-    // Set buffer location status to CALL_PENDING
-    const buffers = this.getBufferLocations();
-    const bIdx = buffers.findIndex((b) => b.locationId === params.bufferLocation);
-    if (bIdx >= 0) {
-      buffers[bIdx].status = 'CALL_PENDING';
-      buffers[bIdx].lastUpdated = new Date().toISOString();
-      this.saveBufferLocations(buffers);
+    // Set buffer location status to CALL_PENDING if it matches an actual buffer shelf
+    if (!params.isDirectKitting && params.bufferLocation) {
+      const buffers = this.getBufferLocations();
+      const bIdx = buffers.findIndex((b) => b.locationId === params.bufferLocation);
+      if (bIdx >= 0) {
+        buffers[bIdx].status = 'CALL_PENDING';
+        buffers[bIdx].lastUpdated = new Date().toISOString();
+        this.saveBufferLocations(buffers);
+      }
     }
 
     return newReq;

@@ -15,6 +15,7 @@ import {
   Plus,
   Trash2,
   Database,
+  Truck,
 } from 'lucide-react';
 
 interface SettingsViewProps {
@@ -46,6 +47,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [productionOrders, setProductionOrders] = useState<string[]>(settings.productionOrders || []);
   const [newLSX, setNewLSX] = useState('');
+
+  const [assemblyLines, setAssemblyLines] = useState<string[]>(settings.assemblyLines || []);
+  const [newAssemblyLine, setNewAssemblyLine] = useState('');
 
   const [message, setMessage] = useState<{ type: string; text: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'general' | 'warehouse_map'>('general');
@@ -93,6 +97,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       stockInReasons,
       stockOutPurposes,
       productionOrders,
+      assemblyLines,
       locations: locations.length > 0 ? locations : (settings.locations || []),
     };
     storageService.saveSettings(updated);
@@ -142,6 +147,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
   const handleDeleteLSX = (idx: number) => {
     setProductionOrders(productionOrders.filter((_, i) => i !== idx));
+  };
+
+  // Assembly Line helpers
+  const handleAddAssemblyLine = () => {
+    if (!newAssemblyLine.trim()) return;
+    if (assemblyLines.includes(newAssemblyLine.trim())) {
+      setMessage({ type: 'error', text: 'Tên vị trí bàn máy này đã tồn tại trong danh sách!' });
+      return;
+    }
+    setAssemblyLines([...assemblyLines, newAssemblyLine.trim()]);
+    setNewAssemblyLine('');
+  };
+  const handleDeleteAssemblyLine = (idx: number) => {
+    setAssemblyLines(assemblyLines.filter((_, i) => i !== idx));
   };
 
   const handleBackup = () => {
@@ -447,6 +466,53 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   type="button"
                   onClick={() => handleDeleteLSX(idx)}
                   className="text-purple-400 hover:text-red-600"
+                >
+                  &times;
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CÀI ĐẶT DÂY CHUYỀN / BÀN MÁY NHẬN HÀNG */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-slate-800 text-sm flex items-center">
+              <Truck className="w-4 h-4 text-amber-600 mr-2" />
+              Cài Đặt Dây Chuyền / Bàn Máy Yêu Cầu Cấp Hàng (Vị Trí Nhận Hàng)
+            </h3>
+            <span className="text-xs text-slate-400 font-medium">{assemblyLines.length} vị trí</span>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <input
+              type="text"
+              value={newAssemblyLine}
+              onChange={(e) => setNewAssemblyLine(e.target.value)}
+              placeholder="Thêm vị trí/bàn máy mới (VD: Bàn Lắp Ráp Bo Mạch Line 5)..."
+              className="flex-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-amber-900 focus:ring-2 focus:ring-amber-500 outline-hidden"
+            />
+            <button
+              type="button"
+              onClick={handleAddAssemblyLine}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shrink-0"
+            >
+              + Thêm Vị Trí
+            </button>
+          </div>
+
+          <div className="flex flex-wrap gap-2 pt-1">
+            {assemblyLines.map((line, idx) => (
+              <div
+                key={idx}
+                className="flex items-center space-x-2 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-950 rounded-xl text-xs font-bold"
+              >
+                <span>{line}</span>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteAssemblyLine(idx)}
+                  className="text-amber-500 hover:text-rose-600 font-black cursor-pointer ml-1"
+                  title="Xóa vị trí này"
                 >
                   &times;
                 </button>

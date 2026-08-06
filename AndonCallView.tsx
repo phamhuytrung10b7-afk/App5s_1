@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { MaterialCallRequest, BufferLocationMap, AppSettings } from './types';
+import { MaterialCallRequest, BufferLocationMap, AppSettings, Part } from './types';
 import { storageService } from './storage';
+import { SearchableSelect, SelectOption } from './SearchableSelect';
 import {
   Bell,
   BellRing,
@@ -17,63 +18,182 @@ import {
   ShieldCheck,
   Check,
   Zap,
+  Search,
+  Settings as SettingsIcon,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 
 interface AndonCallViewProps {
   materialCalls: MaterialCallRequest[];
   buffers: BufferLocationMap[];
+  parts?: Part[];
   settings: AppSettings;
   onRefresh: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 export const AndonCallView: React.FC<AndonCallViewProps> = ({
   materialCalls,
   buffers,
+  parts,
   settings,
   onRefresh,
+  onNavigateToSettings,
 }) => {
   const [activeTab, setActiveTab] = useState<'request' | 'logistics' | 'history'>('logistics');
 
+  // Master parts list
+  const allParts = parts && parts.length > 0 ? parts : storageService.getParts();
+
+  // Assembly lines list from Settings
+  const assemblyLinesList = (settings.assemblyLines && settings.assemblyLines.length > 0)
+    ? settings.assemblyLines
+    : [
+        'Bàn Lắp Ráp Bo Mạch Line 1',
+        'Dây Chuyền SMT Tự Động 2',
+        'Bàn Lắp Khung Cơ Khí 3',
+        'Khu Kiểm Thử Quality Check 4',
+      ];
+
   // Request form state
-  const [assemblyLine, setAssemblyLine] = useState('Bàn Lắp Ráp Bo Mạch Line 1');
-  const [selectedBufferId, setSelectedBufferId] = useState('');
+  const [assemblyLine, setAssemblyLine] = useState(assemblyLinesList[0] || 'Bàn Lắp Ráp Bo Mạch Line 1');
+  const [isManageLinesModalOpen, setIsManageLinesModalOpen] = useState(false);
+  const [newLineInput, setNewLineInput] = useState('');
+
+  const [selectedPartCode, setSelectedPartCode] = useState('');
   const [requestedQty, setRequestedQty] = useState<number>(10);
-  const [requestedBy, setRequestedBy] = useState(settings.staffList[0] || 'Nguyễn Văn A (Trưởng Dây Chuyền 1)');
+  const [requestedBy, setRequestedBy] = useState(
+    (settings.staffList && settings.staffList[0]) || 'Nguyễn Văn A (Trưởng Dây Chuyền 1)'
+  );
 
   // Logistics deliver modal / confirm state
-  const [delivererName, setDelivererName] = useState('Lê Hoàng Nam (Thủ Kho Logistics)');
+  const [delivererName, setDelivererName] = useState(
+    (settings.staffList && settings.staffList[0]) || 'Lê Hoàng Nam (Thủ Kho Logistics)'
+  );
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Available buffers with stock
-  const availableBuffers = buffers.filter((b) => b.status !== 'EMPTY' && b.currentStockQty > 0);
+  // Get Kitting Queue items waiting for kitting (đã xuất kho thô, chờ bóc tách)
+  const kittingQueue = storageService.getKittingQueue();
+  const pendingKittingItems = kittingQueue.filter((k) => k.status === 'PENDING_KITTING');
 
+  // Group available stock on Outbuffer shelves by part code
+  const bufferPartsMap = new Map<
+    string,
+    {
+      partCode: string;
+      partName: string;
+      unit: string;
+      totalBufferStock: number;
+      availableBuffers: BufferLocationMap[];
+    }
+  >();
+
+  buffers.forEach((b) => {
+    if (b.partCode && b.currentStockQty > 0 && b.status !== 'EMPTY') {
+      const code = b.partCode.trim();
+      if (!bufferPartsMap.has(code)) {
+        bufferPartsMap.set(code, {
+          partCode: code,
+          partName: b.partName || code,
+          unit: b.unit || 'PCS',
+          totalBufferStock: b.currentStockQty,
+          availableBuffers: [b],
+        });
+      } else {
+        const item = bufferPartsMap.get(code)!;
+        item.totalBufferStock += b.currentStockQty;
+        item.availableBuffers.push(b);
+      }
+    }
+  });
+
+  // Prepare searchable options for SearchableSelect
+  // Rule: ONLY allow parts that are either on Outbuffer shelves OR in Pending Kitting list (đã xuất kho thô)
+  const partSelectOptions: SelectOption[] = Array.from(bufferPartsMap.values()).map((p) => {
+    const shelfListStr = p.availableBuffers.map((b) => b.locationId).join(', ');
+    return {
+      value: p.partCode,
+      label: `[${p.partCode}] ${p.partName}`,
+      sublabel: `Tồn Outbuffer: ${p.totalBufferStock} ${p.unit} | Kệ: ${shelfListStr}`,
+      badge: `Sẵn sàng Kệ ${p.availableBuffers[0].locationId}`,
+    };
+  });
+
+  // Add parts from "Danh sách chờ bóc tách" that are not on Outbuffer shelves yet
+  const seenPendingPartCodes = new Set<string>();
+  pendingKittingItems.forEach((kit) => {
+    if (!bufferPartsMap.has(kit.partCode) && !seenPendingPartCodes.has(kit.partCode)) {
+      seenPendingPartCodes.add(kit.partCode);
+      partSelectOptions.push({
+        value: kit.partCode,
+        label: `[${kit.partCode}] ${kit.partName}`,
+        sublabel: `Đã xuất kho thô (Chờ bóc tách Kitting): ${kit.rawQuantity} ${kit.unit}`,
+        badge: `📦 Chờ Bóc Tách Kitting`,
+      });
+    }
+  });
+
+  // Automatically select first available part if none selected
   useEffect(() => {
-    if (availableBuffers.length > 0 && !selectedBufferId) {
-      setSelectedBufferId(availableBuffers[0].locationId);
-      setRequestedQty(Math.min(10, availableBuffers[0].currentStockQty));
+    if (partSelectOptions.length > 0) {
+      if (!selectedPartCode || !partSelectOptions.some((o) => o.value === selectedPartCode)) {
+        setSelectedPartCode(partSelectOptions[0].value);
+      }
+    } else {
+      setSelectedPartCode('');
     }
-  }, [availableBuffers]);
+  }, [partSelectOptions]);
 
-  const handleBufferChange = (bufId: string) => {
-    setSelectedBufferId(bufId);
-    const buf = buffers.find((b) => b.locationId === bufId);
-    if (buf) {
-      setRequestedQty(Math.min(10, buf.currentStockQty));
+  // Keep assemblyLine in sync if settings update
+  useEffect(() => {
+    if (assemblyLinesList.length > 0 && !assemblyLinesList.includes(assemblyLine)) {
+      setAssemblyLine(assemblyLinesList[0]);
     }
-  };
+  }, [assemblyLinesList]);
+
+  // Determine auto-selected buffer location for the chosen part code
+  const chosenBufferInfo = bufferPartsMap.get(selectedPartCode);
+  let targetBufferLocation = '';
+  let availableQtyOnShelf = 0;
+  let partName = '';
+  let unit = 'PCS';
+  let isDirectKitting = false;
+
+  if (chosenBufferInfo && chosenBufferInfo.availableBuffers.length > 0) {
+    // Sort by age (FIFO oldest shelf first)
+    const sortedBuffers = [...chosenBufferInfo.availableBuffers].sort(
+      (a, b) => new Date(a.lastUpdated).getTime() - new Date(b.lastUpdated).getTime()
+    );
+    const bestBuffer = sortedBuffers[0];
+    targetBufferLocation = bestBuffer.locationId;
+    availableQtyOnShelf = bestBuffer.currentStockQty;
+    partName = bestBuffer.partName || chosenBufferInfo.partName;
+    unit = bestBuffer.unit || chosenBufferInfo.unit;
+    isDirectKitting = false;
+  } else {
+    // Part is in Pending Kitting list
+    const pendingItem = pendingKittingItems.find((k) => k.partCode === selectedPartCode);
+    const masterPart = allParts.find((p) => p.code === selectedPartCode);
+    partName = pendingItem?.partName || masterPart?.name || selectedPartCode;
+    unit = pendingItem?.unit || masterPart?.unit || 'PCS';
+    targetBufferLocation = 'KHU BÓC TÁCH KITTING';
+    availableQtyOnShelf = 0;
+    isDirectKitting = true;
+  }
 
   const handleCreateCallRequest = (e: React.FormEvent) => {
     e.preventDefault();
-    const targetBuf = buffers.find((b) => b.locationId === selectedBufferId);
-    if (!targetBuf || !targetBuf.partCode) {
-      setMessage({ type: 'error', text: 'Vui lòng chọn Kệ Buffer có chứa linh kiện hợp lệ!' });
+
+    if (!selectedPartCode) {
+      setMessage({ type: 'error', text: 'Vui lòng chọn mã linh kiện cần gọi!' });
       return;
     }
 
-    if (requestedQty > targetBuf.currentStockQty) {
+    if (!isDirectKitting && chosenBufferInfo && requestedQty > availableQtyOnShelf) {
       setMessage({
         type: 'error',
-        text: `Số lượng yêu cầu (${requestedQty}) vượt quá tồn trên Kệ ${targetBuf.locationId} (${targetBuf.currentStockQty})!`,
+        text: `Số lượng yêu cầu (${requestedQty}) vượt quá tồn kho khả dụng trên Kệ ${targetBufferLocation} (${availableQtyOnShelf} ${unit})!`,
       });
       return;
     }
@@ -81,15 +201,16 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
     try {
       storageService.createMaterialCallRequest({
         assemblyLine,
-        partCode: targetBuf.partCode,
-        partName: targetBuf.partName || targetBuf.partCode,
-        unit: targetBuf.unit || 'PCS',
+        partCode: selectedPartCode,
+        partName: partName || selectedPartCode,
+        unit,
         requestedQty,
-        bufferLocation: targetBuf.locationId,
+        bufferLocation: targetBufferLocation,
+        isDirectKitting,
         requestedBy,
       });
 
-      // Play audio notification chime using Web Audio API!
+      // Audio notification chime
       try {
         const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
         const osc = audioCtx.createOscillator();
@@ -109,7 +230,7 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
 
       setMessage({
         type: 'success',
-        text: `🚀 Đã phát tín hiệu ANDON gọi hàng thành công tới Bộ Phận Logistics Kho!`,
+        text: `🚀 Đã phát tín hiệu ANDON gọi mã linh kiện [${selectedPartCode}] thành công tới bộ phận Logistics!`,
       });
 
       onRefresh();
@@ -156,10 +277,10 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
               <span>ANDON MATERIAL CALL & DELIVERY SYSTEM</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-white">
-              Gọi Hàng & Giao Hàng Dây Chuyền (Andon)
+              Gọi Hàng & Giao Hàng Dây Chuyền (Andon Call)
             </h1>
             <p className="text-amber-100 text-xs sm:text-sm max-w-2xl">
-              Hệ thống tín hiệu Andon thời gian thực truyền tin giữa Bàn Máy Lắp Ráp & Bộ phận Logistics Kho, điều phối giao nhận thùng xanh chính xác vị trí.
+              Hệ thống tín hiệu Andon thời gian thực: Dây chuyền tìm chọn mã linh kiện & số lượng cần gọi, bộ phận Logistics tự động định vị vị trí kệ Outbuffer cấp hàng.
             </p>
           </div>
 
@@ -261,11 +382,15 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
                 onChange={(e) => setDelivererName(e.target.value)}
                 className="px-3.5 py-1.5 bg-white border border-amber-300 rounded-xl font-bold text-slate-900 text-xs focus:ring-2 focus:ring-amber-500"
               >
-                {settings.staffList.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
+                {settings.staffList && settings.staffList.length > 0 ? (
+                  settings.staffList.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))
+                ) : (
+                  <option value="Lê Hoàng Nam (Thủ Kho Logistics)">Lê Hoàng Nam (Thủ Kho Logistics)</option>
+                )}
               </select>
             </div>
 
@@ -293,9 +418,16 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
                       key={req.requestId}
                       className="p-5 bg-white border-2 border-red-200 rounded-2xl shadow-xs hover:shadow-md transition-all space-y-3 relative overflow-hidden"
                     >
-                      <div className="absolute top-0 right-0 px-3 py-1 bg-red-600 text-white text-[10px] font-black uppercase rounded-bl-xl tracking-wider">
-                        ⚡ CẦN CẤP GẤP
-                      </div>
+                      {req.isDirectKitting ? (
+                        <div className="absolute top-0 right-0 px-3 py-1 bg-amber-500 text-slate-950 text-[10px] font-black uppercase rounded-bl-xl tracking-wider shadow-xs flex items-center space-x-1">
+                          <Zap className="w-3 h-3" />
+                          <span>BÓC TÁCH & GIAO THẲNG</span>
+                        </div>
+                      ) : (
+                        <div className="absolute top-0 right-0 px-3 py-1 bg-red-600 text-white text-[10px] font-black uppercase rounded-bl-xl tracking-wider shadow-xs">
+                          ⚡ CẤP TỪ OUTBUFFER
+                        </div>
+                      )}
 
                       <div className="space-y-1">
                         <span className="text-amber-800 font-bold text-[11px] block">
@@ -306,16 +438,33 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
                       </div>
 
                       {/* Explicit Delivery Route Banner */}
-                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1">
-                        <span className="font-extrabold text-amber-900 block uppercase text-[10px]">LỘ TRÌNH LẤY HÀNG LOGISTICS:</span>
-                        <p className="font-bold text-slate-800 flex items-center space-x-2 flex-wrap">
-                          <span>1. Đến Kệ <strong className="text-blue-700 font-mono">[{req.bufferLocation}]</strong></span>
-                          <ArrowRight className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                          <span>2. Lấy <strong className="text-emerald-700 font-extrabold">[{req.requestedQty} {req.unit}]</strong></span>
-                          <ArrowRight className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                          <span>3. Giao tới <strong className="text-slate-900">[{req.assemblyLine}]</strong></span>
-                        </p>
-                      </div>
+                      {req.isDirectKitting || req.bufferLocation.includes('KITTING') ? (
+                        <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-xl text-xs space-y-1.5">
+                          <span className="font-extrabold text-amber-900 flex items-center space-x-1 uppercase text-[10px]">
+                            <Zap className="w-3.5 h-3.5 text-amber-600" />
+                            <span>LỘ TRÌNH BÓC TÁCH & GIAO THẲNG DÂY CHUYỀN (CROSS-DOCKING):</span>
+                          </span>
+                          <p className="font-bold text-slate-800 flex items-center space-x-2 flex-wrap">
+                            <span>1. Đến <strong className="text-amber-900 font-extrabold">Khu Bóc Tách (Kitting Area)</strong> bóc tách <strong className="text-emerald-700 font-extrabold">[{req.requestedQty} {req.unit}]</strong></span>
+                            <ArrowRight className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>2. Giao TRỰC TIẾP tới <strong className="text-slate-900 font-extrabold">[{req.assemblyLine}]</strong></span>
+                          </p>
+                          <p className="text-[10px] text-amber-800 font-medium italic">
+                            * Linh kiện bóc tách xong giao ngay cho Dây Chuyền, không cần lưu qua kệ Outbuffer.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs space-y-1">
+                          <span className="font-extrabold text-blue-900 block uppercase text-[10px]">LỘ TRÌNH LẤY HÀNG OUTBUFFER (FIFO):</span>
+                          <p className="font-bold text-slate-800 flex items-center space-x-2 flex-wrap">
+                            <span>1. Đến Kệ <strong className="text-blue-700 font-mono font-black">[{req.bufferLocation}]</strong></span>
+                            <ArrowRight className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>2. Lấy <strong className="text-emerald-700 font-extrabold">[{req.requestedQty} {req.unit}]</strong></span>
+                            <ArrowRight className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>3. Giao tới <strong className="text-slate-900 font-bold">[{req.assemblyLine}]</strong></span>
+                          </p>
+                        </div>
+                      )}
 
                       <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-100">
                         <span>Gọi bởi: {req.requestedBy}</span>
@@ -401,54 +550,128 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
               <div>
                 <h3 className="font-bold text-sm">Chế Độ Sản Xuất Bấm Gọi Hàng (Andon Call)</h3>
                 <p className="text-xs text-amber-800">
-                  Chọn Bàn máy / Dây chuyền và chọn vị trí Kệ OUTBUFFER sẵn hàng để gửi thông điệp cấp hàng tới thủ kho Logistics.
+                  Chọn mã/tên linh kiện cần gọi và nhập số lượng, hệ thống tự động xác định vị trí kệ Outbuffer khả dụng tốt nhất.
                 </p>
               </div>
             </div>
 
             <form onSubmit={handleCreateCallRequest} className="p-6 bg-white border border-slate-200 rounded-3xl space-y-4 text-xs text-slate-800 shadow-xs">
               <div>
-                <label className="block font-bold text-slate-800 mb-1">
-                  1. Dây Chuyền / Bàn Máy Yêu Cầu Cấp Hàng <span className="text-rose-500">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-bold text-slate-800">
+                    1. Dây Chuyền / Bàn Máy Yêu Cầu Cấp Hàng <span className="text-rose-500">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsManageLinesModalOpen(true)}
+                    className="text-[11px] font-bold text-amber-700 hover:text-amber-900 underline flex items-center space-x-1 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Thêm / Quản lý vị trí</span>
+                  </button>
+                </div>
                 <select
                   value={assemblyLine}
                   onChange={(e) => setAssemblyLine(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-900 text-sm focus:ring-2 focus:ring-amber-500"
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-900 text-sm focus:ring-2 focus:ring-amber-500 cursor-pointer"
                 >
-                  <option value="Bàn Lắp Ráp Bo Mạch Line 1">Bàn Lắp Ráp Bo Mạch Line 1</option>
-                  <option value="Dây Chuyền SMT Tự Động 2">Dây Chuyền SMT Tự Động 2</option>
-                  <option value="Bàn Lắp Khung Cơ Khí 3">Bàn Lắp Khung Cơ Khí 3</option>
-                  <option value="Khu Kiểm Thử Quality Check 4">Khu Kiểm Thử Quality Check 4</option>
+                  {assemblyLinesList.map((line) => (
+                    <option key={line} value={line}>
+                      {line}
+                    </option>
+                  ))}
                 </select>
               </div>
 
+              {/* Searchable Select Part Code & Name */}
               <div>
                 <label className="block font-bold text-slate-800 mb-1">
-                  2. Chọn Kệ OUTBUFFER Khả Dụng Có Hàng <span className="text-rose-500">*</span>
+                  2. Chọn Mã & Tên Linh Kiện Cần Gọi (Chỉ gọi linh kiện trong Danh Sách Chờ Bóc Tách hoặc Kệ Outbuffer) <span className="text-rose-500">*</span>
                 </label>
-                {availableBuffers.length === 0 ? (
-                  <p className="text-rose-600 font-bold p-3 bg-rose-50 rounded-xl">
-                    Hiện chưa có kệ Buffer nào có hàng đóng thùng xanh sẵn sàng. Vui lòng thực hiện bóc tách Kitting trước.
-                  </p>
+                {partSelectOptions.length === 0 ? (
+                  <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl text-xs text-amber-900 space-y-2">
+                    <p className="font-extrabold flex items-center space-x-2 text-sm text-amber-950">
+                      <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                      <span>Chưa Có Linh Kiện Nào Được Xuất Kho Thô Hoặc Tồn Kệ Outbuffer</span>
+                    </p>
+                    <p className="text-slate-700 leading-relaxed font-medium">
+                      Theo quy trình sản xuất, chỉ những linh kiện <strong>đã được xuất kho thô (nằm trong Danh Sách Chờ Bóc Tách)</strong> hoặc <strong>đã có sẵn trên kệ Outbuffer</strong> mới được phép phát tín hiệu gọi cấp hàng.
+                    </p>
+                    <p className="text-amber-900 font-bold italic">
+                      👉 Vui lòng tạo phiếu Xuất Kho Thô từ Kho Tổng trước!
+                    </p>
+                  </div>
                 ) : (
-                  <select
-                    value={selectedBufferId}
-                    onChange={(e) => handleBufferChange(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-blue-900 text-sm focus:ring-2 focus:ring-amber-500"
-                  >
-                    {availableBuffers.map((b) => (
-                      <option key={b.locationId} value={b.locationId}>
-                        📍 Kệ {b.locationId} - Mã: {b.partCode} ({b.partName}) - Tồn: {b.currentStockQty} {b.unit || 'PCS'}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableSelect
+                    options={partSelectOptions}
+                    value={selectedPartCode}
+                    onChange={(val) => {
+                      setSelectedPartCode(val);
+                      const info = bufferPartsMap.get(val);
+                      if (info && info.availableBuffers.length > 0) {
+                        setRequestedQty(Math.min(10, info.availableBuffers[0].currentStockQty));
+                      }
+                    }}
+                    placeholder="Gõ mã hoặc tên linh kiện để tìm kiếm..."
+                    required
+                    allowCustom={false}
+                    icon={<Search className="w-4 h-4" />}
+                  />
                 )}
               </div>
 
+              {/* Auto-detected Buffer Shelf / Direct Kitting Information Box */}
+              {selectedPartCode && (
+                isDirectKitting ? (
+                  <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl text-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-amber-900 flex items-center space-x-1.5">
+                        <Package className="w-4 h-4 text-amber-600" />
+                        <span>Trạng Thái Outbuffer:</span>
+                      </span>
+                      <span className="font-extrabold text-[11px] px-3 py-1 bg-amber-500 text-slate-950 rounded-xl shadow-xs uppercase">
+                        📦 CHƯA CÓ TRÊN KỆ OUTBUFFER
+                      </span>
+                    </div>
+                    <p className="text-slate-800 font-bold">
+                      Tên LK: <strong className="text-slate-900">{partName || selectedPartCode}</strong>
+                    </p>
+                    <div className="p-3 bg-amber-100/90 border border-amber-200 rounded-xl text-amber-950 space-y-1">
+                      <p className="flex items-center space-x-1.5 font-extrabold text-amber-900 text-xs">
+                        <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+                        <span>Quy Trình: Bóc Tách Kitting & Giao Thẳng (Cross-Docking)</span>
+                      </p>
+                      <p className="text-[11px] text-amber-900 leading-relaxed font-medium">
+                        Linh kiện chưa sẵn sàng trên kệ Outbuffer. Tín hiệu bấm gọi này sẽ thông báo cho bộ phận Logistics <strong>thực hiện Bóc Tách tại Khu Kitting và giao TRỰC TIẾP tới {assemblyLine}</strong> mà không gợi ý vị trí kệ lấy ảo!
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-emerald-900 flex items-center space-x-1.5">
+                        <MapPin className="w-4 h-4 text-emerald-600" />
+                        <span>Vị Trí Kệ Outbuffer Lấy Hàng (FIFO):</span>
+                      </span>
+                      <span className="font-mono font-black text-xs px-3 py-1 bg-emerald-700 text-white rounded-xl shadow-xs">
+                        📍 {targetBufferLocation}
+                      </span>
+                    </div>
+                    <p className="text-slate-800 font-bold">
+                      Tên LK: <strong className="text-slate-900">{partName || selectedPartCode}</strong>
+                    </p>
+                    <p className="text-emerald-800 font-bold flex items-center space-x-1">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>Có sẵn trên kệ Outbuffer: {availableQtyOnShelf} {unit}</span>
+                    </p>
+                  </div>
+                )
+              )}
+
+              {/* Requested Quantity */}
               <div>
                 <label className="block font-bold text-slate-800 mb-1">
-                  3. Số Lượng Cần Cấp (PCS) <span className="text-rose-500">*</span>
+                  3. Số Lượng Cần Gọi ({unit}) <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="number"
@@ -460,22 +683,46 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
                 />
               </div>
 
+              {/* Requester Select with link to Settings */}
               <div>
-                <label className="block font-bold text-slate-800 mb-1">
-                  4. Người Yêu Cầu (Trưởng Dây Chuyền / Kỹ Thuật)
-                </label>
-                <input
-                  type="text"
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-bold text-slate-800">
+                    4. Người Yêu Cầu <span className="text-rose-500">*</span>
+                  </label>
+                  {onNavigateToSettings && (
+                    <button
+                      type="button"
+                      onClick={onNavigateToSettings}
+                      className="text-[11px] font-bold text-amber-700 hover:text-amber-900 underline flex items-center space-x-1 cursor-pointer"
+                    >
+                      <SettingsIcon className="w-3 h-3" />
+                      <span>Chỉnh sửa danh sách trong Cài Đặt</span>
+                    </button>
+                  )}
+                </div>
+                <select
                   value={requestedBy}
                   onChange={(e) => setRequestedBy(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl font-semibold text-slate-900 text-sm focus:ring-2 focus:ring-amber-500"
-                />
+                >
+                  {settings.staffList && settings.staffList.length > 0 ? (
+                    settings.staffList.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="Nguyễn Văn A (Trưởng Dây Chuyền 1)">Nguyễn Văn A (Trưởng Dây Chuyền 1)</option>
+                  )}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1 italic">
+                  * Danh sách người yêu cầu có thể chỉnh sửa/thêm bớt trong mục Cài đặt & Dữ liệu.
+                </p>
               </div>
 
               <button
                 type="submit"
-                disabled={availableBuffers.length === 0}
-                className="w-full py-3 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-extrabold rounded-2xl shadow-md transition-all cursor-pointer flex items-center justify-center space-x-2 text-sm mt-4"
+                className="w-full py-3 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-2xl shadow-md transition-all cursor-pointer flex items-center justify-center space-x-2 text-sm mt-4"
               >
                 <BellRing className="w-5 h-5 animate-bounce" />
                 <span>GỬI YÊU CẦU CẤP HÀNG (ANDON SIGNAL)</span>
@@ -538,6 +785,94 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* MODAL QUẢN LÝ BÀN MÁY / VỊ TRÍ NHẬN HÀNG */}
+      {isManageLinesModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-extrabold text-slate-900 text-base flex items-center space-x-2">
+                <Truck className="w-5 h-5 text-amber-600" />
+                <span>Quản Lý Vị Trí / Bàn Máy Nhận Hàng</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsManageLinesModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block font-bold text-slate-800 text-xs">Thêm vị trí mới:</label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="text"
+                  value={newLineInput}
+                  onChange={(e) => setNewLineInput(e.target.value)}
+                  placeholder="Tên bàn máy (VD: Line SMT 3)..."
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold focus:ring-2 focus:ring-amber-500 outline-hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!newLineInput.trim()) return;
+                    if (assemblyLinesList.includes(newLineInput.trim())) return;
+                    const updated = [...assemblyLinesList, newLineInput.trim()];
+                    storageService.saveSettings({ ...settings, assemblyLines: updated });
+                    setAssemblyLine(newLineInput.trim());
+                    setNewLineInput('');
+                    onRefresh();
+                  }}
+                  className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shrink-0"
+                >
+                  + Thêm
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1.5 max-h-56 overflow-y-auto pt-2">
+              <label className="block font-bold text-slate-700 text-[11px] uppercase tracking-wider">Danh sách hiện tại ({assemblyLinesList.length}):</label>
+              {assemblyLinesList.map((line, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
+                >
+                  <span>{line}</span>
+                  {assemblyLinesList.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = assemblyLinesList.filter((_, i) => i !== idx);
+                        storageService.saveSettings({ ...settings, assemblyLines: updated });
+                        if (assemblyLine === line) {
+                          setAssemblyLine(updated[0] || '');
+                        }
+                        onRefresh();
+                      }}
+                      className="p-1 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
+                      title="Xóa vị trí này"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsManageLinesModalOpen(false)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Hoàn Tất
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

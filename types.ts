@@ -57,6 +57,7 @@ export interface AppSettings {
   stockInReasons: string[]; // Danh sách lý do nhập kho
   stockOutPurposes: string[]; // Danh sách mục đích xuất kho
   productionOrders: string[]; // Danh sách mã lệnh sản xuất (LSX)
+  assemblyLines?: string[]; // Danh sách Dây Chuyền / Bàn Máy Yêu Cầu Cấp Hàng (Vị trí nhận hàng)
   locations: WarehouseLocation[];
 }
 
@@ -108,6 +109,7 @@ export interface KittingQueueItem {
 
 export interface BufferLocationMap {
   locationId: string; // e.g. BUFFER-A1-01
+  description?: string; // Mô tả vị trí kệ (e.g. Khoang 01 - Tầng 1 - Vị trí 1)
   partCode?: string;
   partName?: string;
   unit?: string;
@@ -124,7 +126,8 @@ export interface MaterialCallRequest {
   partName: string;
   unit: string;
   requestedQty: number;
-  bufferLocation: string; // Kệ Buffer lấy hàng
+  bufferLocation: string; // Kệ Buffer lấy hàng hoặc "KHU BÓC TÁCH KITTING"
+  isDirectKitting?: boolean; // Tín hiệu Bóc tách & Giao thẳng (Cross-docking)
   requestedBy: string;
   requestedAt: string;
   status: 'CALLING' | 'DELIVERING' | 'COMPLETED';

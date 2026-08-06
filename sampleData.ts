@@ -33,6 +33,12 @@ export const initialSettings: AppSettings = {
     'LSX-2026-TDH09',
     'LSX-2026-BT044',
   ],
+  assemblyLines: [
+    'Bàn Lắp Ráp Bo Mạch Line 1',
+    'Dây Chuyền SMT Tự Động 2',
+    'Bàn Lắp Khung Cơ Khí 3',
+    'Khu Kiểm Thử Quality Check 4',
+  ],
   locations: [
     { id: 'loc-1', name: 'Kệ A1', description: 'Khoang A - Dãy 1' },
     { id: 'loc-2', name: 'Kệ A2', description: 'Khoang A - Dãy 2' },

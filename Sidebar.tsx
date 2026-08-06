@@ -50,6 +50,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     { id: 'stock_in', label: 'Nhập kho', icon: ArrowDownLeft },
     { id: 'stock_out', label: 'Xuất kho', icon: ArrowUpRight },
+    { id: 'warehouse_map', label: 'Sơ đồ kho (Vị trí)', icon: MapPin },
     {
       id: 'kitting',
       label: 'Khu Bóc Tách (Kitting)',
@@ -67,7 +68,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badgeColor: 'bg-amber-500 animate-pulse',
     },
     { id: 'bin_card', label: 'Lịch sử / Thẻ kho', icon: History, section: 'Báo Cáo & Quản Lý' },
-    { id: 'warehouse_map', label: 'Sơ đồ kho (Vị trí)', icon: MapPin },
     { id: 'reports', label: 'Báo cáo', icon: BarChart3 },
     { id: 'settings', label: 'Cài đặt & Dữ liệu', icon: Settings },
   ];

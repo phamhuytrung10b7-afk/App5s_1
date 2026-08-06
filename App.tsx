@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Part, Transaction, AppSettings, ViewTab, KittingQueueItem, BufferLocationMap, MaterialCallRequest } from './types';
 import { storageService } from './storage';
+import { Menu, Boxes } from 'lucide-react';
 
 import { Sidebar } from './Sidebar';
-import { Header } from './Header';
 import { ElectronicBinCardModal } from './ElectronicBinCardModal';
 import { PartModal } from './PartModal';
 import { ConfirmModal } from './ConfirmModal';
@@ -110,18 +110,26 @@ export default function App() {
 
       {/* Main Right Workspace */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
-        {/* Top Sticky Header */}
-        <Header
-          settings={settings}
-          onNavigateTab={setCurrentTab}
-          onOpenQuickAdd={() => {
-            setPartToEdit(null);
-            setIsPartModalOpen(true);
-          }}
-          searchTerm={searchTerm}
-          onSearchChange={setSearchTerm}
-          onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
-        />
+        {/* Mobile Header Bar (Hidden on Desktop) */}
+        <div className="md:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-2xs">
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="p-2 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 rounded-xl border border-slate-200 cursor-pointer"
+              title="Mở Menu Navigation"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div className="flex items-center space-x-2">
+              <div className="w-7 h-7 bg-blue-600 text-white rounded-lg flex items-center justify-center font-bold text-xs">
+                <Boxes className="w-4 h-4" />
+              </div>
+              <span className="font-extrabold text-slate-800 text-sm tracking-tight">
+                {settings.warehouseName || 'KHO LINH KIỆN'}
+              </span>
+            </div>
+          </div>
+        </div>
 
         {/* View Router Body */}
         <main className="flex-1 pb-12 p-4 sm:p-6 max-w-7xl mx-auto w-full">

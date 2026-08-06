@@ -524,12 +524,23 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
                         </span>
                       </div>
 
-                      <div className="space-y-1">
-                        <span className="text-amber-800 font-bold text-[11px] block">
-                          📍 Nơi Nhận: <strong className="text-slate-900 text-xs">{req.assemblyLine}</strong>
+                      <div className="space-y-1.5 pt-1">
+                        <span className="text-amber-900 font-bold text-xs block">
+                          📍 Nơi Nhận: <strong className="text-slate-900 text-sm font-extrabold">{req.assemblyLine}</strong>
                         </span>
-                        <p className="font-mono font-bold text-purple-800 text-sm">{req.partCode}</p>
-                        <p className="font-semibold text-slate-800 text-xs">{req.partName}</p>
+                        <div>
+                          {/* Tên Linh Kiện TO RÕ TRÊN CÙNG */}
+                          <h4 className="text-base sm:text-lg font-black text-slate-900 leading-snug">
+                            {req.partName}
+                          </h4>
+                          {/* Mã Linh Kiện NẰM DƯỚI TÊN LINH KIỆN */}
+                          <div className="mt-1 flex items-center space-x-2">
+                            <span className="text-[11px] font-bold text-slate-500">Mã LK:</span>
+                            <span className="font-mono font-black text-purple-800 text-xs sm:text-sm bg-purple-50 border border-purple-200 px-2.5 py-0.5 rounded-lg inline-block">
+                              {req.partCode}
+                            </span>
+                          </div>
+                        </div>
                       </div>
 
                       {/* Explicit Delivery Route Banner */}
@@ -608,11 +619,20 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
                         </span>
                       </div>
 
-                      <div>
-                        <p className="font-mono font-bold text-purple-800 text-sm">{req.partCode}</p>
-                        <p className="font-semibold text-slate-800 text-xs">{req.partName}</p>
-                        <p className="text-xs text-slate-600 mt-1">
-                          Số lượng: <strong className="text-emerald-700 font-black">{req.requestedQty} {req.unit}</strong> | Kệ lấy: <strong className="text-blue-700 font-mono">{req.bufferLocation}</strong>
+                      <div className="space-y-1.5">
+                        {/* Tên Linh Kiện TO RÕ TRÊN CÙNG */}
+                        <h4 className="text-base sm:text-lg font-black text-slate-900 leading-snug">
+                          {req.partName}
+                        </h4>
+                        {/* Mã Linh Kiện NẰM DƯỚI TÊN LINH KIỆN */}
+                        <div className="flex items-center space-x-2">
+                          <span className="text-[11px] font-bold text-slate-500">Mã LK:</span>
+                          <span className="font-mono font-black text-purple-800 text-xs sm:text-sm bg-purple-50 border border-purple-200 px-2.5 py-0.5 rounded-lg inline-block">
+                            {req.partCode}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 pt-1">
+                          Số lượng: <strong className="text-emerald-700 font-black text-sm">{req.requestedQty} {req.unit}</strong> | Kệ lấy: <strong className="text-blue-700 font-mono font-extrabold">{req.bufferLocation}</strong>
                         </p>
                       </div>
 

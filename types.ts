@@ -107,13 +107,26 @@ export interface KittingQueueItem {
   createdAt: string;
 }
 
+export interface BufferPartItem {
+  id?: string;
+  partCode: string;
+  partName: string;
+  unit: string;
+  currentStockQty: number;
+  containerStandardQty?: number;
+  modelName?: string;
+  lastUpdated?: string;
+}
+
 export interface BufferLocationMap {
   locationId: string; // e.g. BUFFER-A1-01
   description?: string; // Mô tả vị trí kệ (e.g. Khoang 01 - Tầng 1 - Vị trí 1)
-  partCode?: string;
-  partName?: string;
-  unit?: string;
-  currentStockQty: number;
+  modelName?: string; // Model sản xuất gán cho kệ này (nếu có, e.g. "Model LSX-2026-TDH09")
+  items?: BufferPartItem[]; // Danh sách các linh kiện chứa trên kệ này (1 kệ chứa nhiều linh kiện)
+  partCode?: string; // Legacy / Primary partCode
+  partName?: string; // Legacy / Primary partName
+  unit?: string; // Legacy / Primary unit
+  currentStockQty: number; // Tổng số lượng tồn kho trên kệ
   containerStandardQty: number; // Quy cách thùng xanh (e.g. 50 cái/thùng)
   status: 'EMPTY' | 'READY' | 'CALL_PENDING';
   lastUpdated: string; // Dùng kiểm soát FIFO tại Buffer

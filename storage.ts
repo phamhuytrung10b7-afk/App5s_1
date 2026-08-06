@@ -1,4 +1,4 @@
-import { Part, PartLocationStock, Transaction, StockCheckRecord, AppSettings, ContainerBatch, ContainerQrTag, FifoLot, ModelBOM, ModelBOMItem, KittingQueueItem, BufferLocationMap, MaterialCallRequest } from './types';
+import { Part, PartLocationStock, Transaction, StockCheckRecord, AppSettings, ContainerBatch, ContainerQrTag, FifoLot, ModelBOM, ModelBOMItem, KittingQueueItem, BufferLocationMap, BufferPartItem, MaterialCallRequest } from './types';
 import { initialParts, initialTransactions, initialSettings } from './sampleData';
 import * as XLSX from 'xlsx';
 
@@ -14,18 +14,120 @@ const BUFFER_MAP_KEY = 'thekho_buffer_map_v1';
 const MATERIAL_CALLS_KEY = 'thekho_material_calls_v1';
 
 const DEFAULT_BUFFER_LOCATIONS: BufferLocationMap[] = [
-  { locationId: 'BUFFER-A1-01', partCode: 'LK-RES-10K-0805', partName: 'Điện trở dán SMD 10K Ohm 0805', unit: 'Con', currentStockQty: 500, containerStandardQty: 100, status: 'READY', lastUpdated: '2026-08-04T10:00:00.000Z' },
-  { locationId: 'BUFFER-A1-02', partCode: 'LK-SEN-OPT-M12', partName: 'Cảm biến quang M12 NPN NO Omron', unit: 'Cái', currentStockQty: 20, containerStandardQty: 10, status: 'CALL_PENDING', lastUpdated: '2026-08-04T08:30:00.000Z' },
-  { locationId: 'BUFFER-A1-03', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z' },
-  { locationId: 'BUFFER-A2-01', partCode: 'LK-PLC-S71200-1214C', partName: 'Bộ điều khiển PLC Siemens S7-1200', unit: 'Bộ', currentStockQty: 5, containerStandardQty: 1, status: 'READY', lastUpdated: '2026-08-03T14:00:00.000Z' },
-  { locationId: 'BUFFER-A2-02', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z' },
-  { locationId: 'BUFFER-A2-03', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z' },
-  { locationId: 'BUFFER-B1-01', partCode: 'LK-RLY-24VDC-8P', partName: 'Rơ le trung gian 24VDC 8 chân', unit: 'Cái', currentStockQty: 80, containerStandardQty: 20, status: 'READY', lastUpdated: '2026-08-04T09:00:00.000Z' },
-  { locationId: 'BUFFER-B1-02', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z' },
-  { locationId: 'BUFFER-B1-03', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z' },
-  { locationId: 'BUFFER-B2-01', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z' },
-  { locationId: 'BUFFER-B2-02', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z' },
-  { locationId: 'BUFFER-B2-03', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z' },
+  {
+    locationId: 'BUFFER-A1-01',
+    description: 'Khoang A - Dãy 1 - Tầng 1',
+    modelName: 'LSX-2026-TDH09',
+    partCode: 'LK-RES-10K-0805',
+    partName: '2 loại linh kiện (Model LSX-2026-TDH09)',
+    unit: 'Con',
+    currentStockQty: 520,
+    containerStandardQty: 100,
+    status: 'READY',
+    lastUpdated: '2026-08-04T10:00:00.000Z',
+    items: [
+      {
+        id: 'item-101',
+        partCode: 'LK-RES-10K-0805',
+        partName: 'Điện trở dán SMD 10K Ohm 0805',
+        unit: 'Con',
+        currentStockQty: 500,
+        containerStandardQty: 100,
+        modelName: 'LSX-2026-TDH09',
+        lastUpdated: '2026-08-04T10:00:00.000Z',
+      },
+      {
+        id: 'item-102',
+        partCode: 'LK-SEN-OPT-M12',
+        partName: 'Cảm biến quang M12 NPN NO Omron',
+        unit: 'Cái',
+        currentStockQty: 20,
+        containerStandardQty: 10,
+        modelName: 'LSX-2026-TDH09',
+        lastUpdated: '2026-08-04T08:30:00.000Z',
+      },
+    ],
+  },
+  {
+    locationId: 'BUFFER-A1-02',
+    description: 'Khoang A - Dãy 1 - Tầng 2',
+    modelName: 'LSX-2026-BT044',
+    partCode: 'LK-SEN-OPT-M12',
+    partName: 'Cảm biến quang M12 NPN NO Omron',
+    unit: 'Cái',
+    currentStockQty: 20,
+    containerStandardQty: 10,
+    status: 'CALL_PENDING',
+    lastUpdated: '2026-08-04T08:30:00.000Z',
+    items: [
+      {
+        id: 'item-103',
+        partCode: 'LK-SEN-OPT-M12',
+        partName: 'Cảm biến quang M12 NPN NO Omron',
+        unit: 'Cái',
+        currentStockQty: 20,
+        containerStandardQty: 10,
+        modelName: 'LSX-2026-BT044',
+        lastUpdated: '2026-08-04T08:30:00.000Z',
+      },
+    ],
+  },
+  { locationId: 'BUFFER-A1-03', description: 'Khoang A - Dãy 1 - Tầng 3', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z', items: [] },
+  {
+    locationId: 'BUFFER-A2-01',
+    description: 'Khoang A - Dãy 2 - Tầng 1',
+    modelName: 'LSX-2026-TDH09',
+    partCode: 'LK-PLC-S71200-1214C',
+    partName: 'Bộ điều khiển PLC Siemens S7-1200',
+    unit: 'Bộ',
+    currentStockQty: 5,
+    containerStandardQty: 1,
+    status: 'READY',
+    lastUpdated: '2026-08-03T14:00:00.000Z',
+    items: [
+      {
+        id: 'item-104',
+        partCode: 'LK-PLC-S71200-1214C',
+        partName: 'Bộ điều khiển PLC Siemens S7-1200',
+        unit: 'Bộ',
+        currentStockQty: 5,
+        containerStandardQty: 1,
+        modelName: 'LSX-2026-TDH09',
+        lastUpdated: '2026-08-03T14:00:00.000Z',
+      },
+    ],
+  },
+  { locationId: 'BUFFER-A2-02', description: 'Khoang A - Dãy 2 - Tầng 2', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z', items: [] },
+  { locationId: 'BUFFER-A2-03', description: 'Khoang A - Dãy 2 - Tầng 3', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z', items: [] },
+  {
+    locationId: 'BUFFER-B1-01',
+    description: 'Khoang B - Dãy 1 - Tầng 1',
+    modelName: 'LSX-2026-HL271',
+    partCode: 'LK-RLY-24VDC-8P',
+    partName: 'Rơ le trung gian 24VDC 8 chân',
+    unit: 'Cái',
+    currentStockQty: 80,
+    containerStandardQty: 20,
+    status: 'READY',
+    lastUpdated: '2026-08-04T09:00:00.000Z',
+    items: [
+      {
+        id: 'item-105',
+        partCode: 'LK-RLY-24VDC-8P',
+        partName: 'Rơ le trung gian 24VDC 8 chân',
+        unit: 'Cái',
+        currentStockQty: 80,
+        containerStandardQty: 20,
+        modelName: 'LSX-2026-HL271',
+        lastUpdated: '2026-08-04T09:00:00.000Z',
+      },
+    ],
+  },
+  { locationId: 'BUFFER-B1-02', description: 'Khoang B - Dãy 1 - Tầng 2', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z', items: [] },
+  { locationId: 'BUFFER-B1-03', description: 'Khoang B - Dãy 1 - Tầng 3', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z', items: [] },
+  { locationId: 'BUFFER-B2-01', description: 'Khoang B - Dãy 2 - Tầng 1', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z', items: [] },
+  { locationId: 'BUFFER-B2-02', description: 'Khoang B - Dãy 2 - Tầng 2', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z', items: [] },
+  { locationId: 'BUFFER-B2-03', description: 'Khoang B - Dãy 2 - Tầng 3', currentStockQty: 0, containerStandardQty: 50, status: 'EMPTY', lastUpdated: '2026-08-01T00:00:00.000Z', items: [] },
 ];
 
 const INITIAL_KITTING_QUEUE: KittingQueueItem[] = [
@@ -1247,13 +1349,51 @@ export const storageService = {
     const buffers = this.getBufferLocations();
     const bIdx = buffers.findIndex((b) => b.locationId === params.bufferLocation);
     if (bIdx >= 0) {
+      const targetBuf = buffers[bIdx];
+      let items: BufferPartItem[] = targetBuf.items ? [...targetBuf.items] : [];
+      
+      // Legacy fallback conversion
+      if (items.length === 0 && targetBuf.partCode && targetBuf.currentStockQty > 0) {
+        items.push({
+          id: 'item-migrated-1',
+          partCode: targetBuf.partCode,
+          partName: targetBuf.partName || targetBuf.partCode,
+          unit: targetBuf.unit || 'PCS',
+          currentStockQty: targetBuf.currentStockQty,
+          lastUpdated: targetBuf.lastUpdated,
+        });
+      }
+
+      const itemIdx = items.findIndex((i) => i.partCode === updatedItem.partCode);
+      if (itemIdx >= 0) {
+        items[itemIdx] = {
+          ...items[itemIdx],
+          partName: updatedItem.partName,
+          unit: updatedItem.unit,
+          currentStockQty: items[itemIdx].currentStockQty + params.kittedQuantity,
+          lastUpdated: nowIso,
+        };
+      } else {
+        items.push({
+          id: 'bitem-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+          partCode: updatedItem.partCode,
+          partName: updatedItem.partName,
+          unit: updatedItem.unit,
+          currentStockQty: params.kittedQuantity,
+          lastUpdated: nowIso,
+        });
+      }
+
+      const totalQty = items.reduce((sum, i) => sum + (i.currentStockQty || 0), 0);
+
       buffers[bIdx] = {
-        ...buffers[bIdx],
-        partCode: updatedItem.partCode,
-        partName: updatedItem.partName,
-        unit: updatedItem.unit,
-        currentStockQty: (buffers[bIdx].partCode === updatedItem.partCode ? buffers[bIdx].currentStockQty : 0) + params.kittedQuantity,
-        status: buffers[bIdx].status === 'CALL_PENDING' ? 'CALL_PENDING' : 'READY',
+        ...targetBuf,
+        items,
+        partCode: items[0]?.partCode,
+        partName: items.length === 1 ? items[0]?.partName : `${items.length} loại linh kiện`,
+        unit: items[0]?.unit || 'PCS',
+        currentStockQty: totalQty,
+        status: targetBuf.status === 'CALL_PENDING' ? 'CALL_PENDING' : (totalQty > 0 ? 'READY' : 'EMPTY'),
         lastUpdated: nowIso,
       };
       this.saveBufferLocations(buffers);
@@ -1270,15 +1410,38 @@ export const storageService = {
   // --- BUFFER LOCATION METHODS ---
   getBufferLocations(): BufferLocationMap[] {
     const raw = localStorage.getItem(BUFFER_MAP_KEY);
-    if (!raw) {
+    let list: BufferLocationMap[] = DEFAULT_BUFFER_LOCATIONS;
+    if (raw) {
+      try {
+        list = JSON.parse(raw);
+      } catch {
+        list = DEFAULT_BUFFER_LOCATIONS;
+      }
+    } else {
       localStorage.setItem(BUFFER_MAP_KEY, JSON.stringify(DEFAULT_BUFFER_LOCATIONS));
-      return DEFAULT_BUFFER_LOCATIONS;
     }
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return DEFAULT_BUFFER_LOCATIONS;
-    }
+
+    // Normalize each shelf item array
+    return list.map((b) => {
+      let items: BufferPartItem[] = b.items ? [...b.items] : [];
+      if (items.length === 0 && b.partCode && (b.currentStockQty > 0 || b.partName)) {
+        items.push({
+          id: 'auto-item-1',
+          partCode: b.partCode,
+          partName: b.partName || b.partCode,
+          unit: b.unit || 'PCS',
+          currentStockQty: b.currentStockQty,
+          lastUpdated: b.lastUpdated,
+        });
+      }
+      const totalQty = items.reduce((sum, i) => sum + (i.currentStockQty || 0), 0);
+      return {
+        ...b,
+        items,
+        currentStockQty: totalQty,
+        status: b.status === 'CALL_PENDING' ? 'CALL_PENDING' : totalQty > 0 ? 'READY' : 'EMPTY',
+      };
+    });
   },
 
   saveBufferLocations(locs: BufferLocationMap[]): void {
@@ -1290,9 +1453,17 @@ export const storageService = {
     const idx = locs.findIndex((l) => l.locationId === locationId);
     if (idx === -1) throw new Error('Không tìm thấy kệ buffer');
 
+    const updatedItems = data.items !== undefined ? data.items : locs[idx].items || [];
+    const totalQty = updatedItems.length > 0
+      ? updatedItems.reduce((sum, i) => sum + (i.currentStockQty || 0), 0)
+      : (data.currentStockQty !== undefined ? data.currentStockQty : locs[idx].currentStockQty);
+
     locs[idx] = {
       ...locs[idx],
       ...data,
+      items: updatedItems,
+      currentStockQty: totalQty,
+      status: totalQty <= 0 ? 'EMPTY' : (locs[idx].status === 'CALL_PENDING' ? 'CALL_PENDING' : 'READY'),
       lastUpdated: new Date().toISOString(),
     };
     this.saveBufferLocations(locs);
@@ -1305,6 +1476,7 @@ export const storageService = {
     if (idx !== -1) {
       locs[idx] = {
         ...locs[idx],
+        items: [],
         partCode: undefined,
         partName: undefined,
         unit: undefined,
@@ -1511,16 +1683,28 @@ export const storageService = {
       const buffers = this.getBufferLocations();
       const bIdx = buffers.findIndex((b) => b.locationId === current.bufferLocation);
       if (bIdx >= 0) {
-        const remaining = Math.max(0, buffers[bIdx].currentStockQty - current.requestedQty);
-        buffers[bIdx].currentStockQty = remaining;
-        if (remaining <= 0) {
-          buffers[bIdx].status = 'EMPTY';
-          buffers[bIdx].partCode = undefined;
-          buffers[bIdx].partName = undefined;
-        } else {
-          buffers[bIdx].status = 'READY';
+        const targetBuf = buffers[bIdx];
+        let items: BufferPartItem[] = targetBuf.items ? [...targetBuf.items] : [];
+
+        const itemIdx = items.findIndex((i) => i.partCode === current.partCode);
+        if (itemIdx >= 0) {
+          items[itemIdx].currentStockQty = Math.max(0, items[itemIdx].currentStockQty - current.requestedQty);
+          if (items[itemIdx].currentStockQty <= 0) {
+            items.splice(itemIdx, 1);
+          }
         }
-        buffers[bIdx].lastUpdated = new Date().toISOString();
+
+        const remaining = items.reduce((sum, i) => sum + (i.currentStockQty || 0), 0);
+        buffers[bIdx] = {
+          ...targetBuf,
+          items,
+          partCode: items[0]?.partCode,
+          partName: items.length === 1 ? items[0]?.partName : items.length > 1 ? `${items.length} loại linh kiện` : undefined,
+          unit: items[0]?.unit || 'PCS',
+          currentStockQty: remaining,
+          status: remaining <= 0 ? 'EMPTY' : 'READY',
+          lastUpdated: new Date().toISOString(),
+        };
         this.saveBufferLocations(buffers);
       }
 

@@ -90,21 +90,41 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
   >();
 
   buffers.forEach((b) => {
-    if (b.partCode && b.currentStockQty > 0 && b.status !== 'EMPTY') {
-      const code = b.partCode.trim();
-      if (!bufferPartsMap.has(code)) {
-        bufferPartsMap.set(code, {
-          partCode: code,
-          partName: b.partName || code,
-          unit: b.unit || 'PCS',
-          totalBufferStock: b.currentStockQty,
-          availableBuffers: [b],
-        });
-      } else {
-        const item = bufferPartsMap.get(code)!;
-        item.totalBufferStock += b.currentStockQty;
-        item.availableBuffers.push(b);
-      }
+    if (b.status !== 'EMPTY') {
+      const itemsOnShelf = (b.items && b.items.length > 0)
+        ? b.items
+        : (b.partCode ? [{ partCode: b.partCode, partName: b.partName || b.partCode, unit: b.unit || 'PCS', currentStockQty: b.currentStockQty }] : []);
+
+      itemsOnShelf.forEach((item) => {
+        if (item.partCode && item.currentStockQty > 0) {
+          const code = item.partCode.trim();
+          if (!bufferPartsMap.has(code)) {
+            bufferPartsMap.set(code, {
+              partCode: code,
+              partName: item.partName || code,
+              unit: item.unit || 'PCS',
+              totalBufferStock: item.currentStockQty,
+              availableBuffers: [{
+                ...b,
+                partCode: item.partCode,
+                partName: item.partName,
+                unit: item.unit,
+                currentStockQty: item.currentStockQty,
+              }],
+            });
+          } else {
+            const entry = bufferPartsMap.get(code)!;
+            entry.totalBufferStock += item.currentStockQty;
+            entry.availableBuffers.push({
+              ...b,
+              partCode: item.partCode,
+              partName: item.partName,
+              unit: item.unit,
+              currentStockQty: item.currentStockQty,
+            });
+          }
+        }
+      });
     }
   });
 
@@ -190,10 +210,20 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
       return;
     }
 
-    if (!isDirectKitting && chosenBufferInfo && requestedQty > availableQtyOnShelf) {
+    if (isDirectKitting) {
+      const pendingItemsForPart = pendingKittingItems.filter((k) => k.partCode === selectedPartCode);
+      const maxPendingQty = pendingItemsForPart.reduce((sum, k) => sum + k.rawQuantity, 0);
+      if (requestedQty > maxPendingQty && maxPendingQty > 0) {
+        setMessage({
+          type: 'error',
+          text: `Số lượng yêu cầu (${requestedQty}) vượt quá giới hạn số lượng trong danh sách chờ bóc tách Kitting (${maxPendingQty} ${unit})! Không được gọi vượt quá số lượng này.`,
+        });
+        return;
+      }
+    } else if (chosenBufferInfo && requestedQty > availableQtyOnShelf) {
       setMessage({
         type: 'error',
-        text: `Số lượng yêu cầu (${requestedQty}) vượt quá tồn kho khả dụng trên Kệ ${targetBufferLocation} (${availableQtyOnShelf} ${unit})!`,
+        text: `Số lượng yêu cầu (${requestedQty}) vượt quá tồn kho khả dụng trên Kệ ${targetBufferLocation} (${availableQtyOnShelf} ${unit})! Không được gọi vượt quá số lượng tồn.`,
       });
       return;
     }

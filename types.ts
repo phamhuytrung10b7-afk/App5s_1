@@ -83,10 +83,27 @@ export type ViewTab =
   | 'kitting'
   | 'buffer'
   | 'andon'
+  | 'andon_request'
+  | 'andon_calling'
+  | 'andon_delivering'
+  | 'andon_history'
   | 'bin_card'
   | 'warehouse_map'
   | 'reports'
-  | 'settings';
+  | 'settings'
+  | 'users';
+
+export interface UserAccount {
+  id: string;
+  username: string; // Tên đăng nhập
+  password: string; // Mật khẩu
+  fullName: string; // Họ và tên
+  roleTitle: string; // Chức danh / Vai trò (vd: Quản trị viên, Thủ kho...)
+  allowedTabs: ViewTab[]; // Chức năng được phép truy cập
+  isActive: boolean; // Trạng thái hoạt động
+  createdAt: string;
+  lastLoginAt?: string;
+}
 
 export interface KittingQueueItem {
   id: string;

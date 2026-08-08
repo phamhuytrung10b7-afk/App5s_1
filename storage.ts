@@ -1,4 +1,4 @@
-import { Part, PartLocationStock, Transaction, StockCheckRecord, AppSettings, ContainerBatch, ContainerQrTag, FifoLot, ModelBOM, ModelBOMItem, KittingQueueItem, BufferLocationMap, BufferPartItem, MaterialCallRequest, BomExportVoucher, BomExportVoucherItem } from './types';
+import { Part, PartLocationStock, Transaction, StockCheckRecord, AppSettings, ContainerBatch, ContainerQrTag, FifoLot, ModelBOM, ModelBOMItem, KittingQueueItem, BufferLocationMap, BufferPartItem, MaterialCallRequest, BomExportVoucher, BomExportVoucherItem, UserAccount, ViewTab } from './types';
 import { initialParts, initialTransactions, initialSettings } from './sampleData';
 import * as XLSX from 'xlsx';
 
@@ -1771,6 +1771,211 @@ export const storageService = {
   deleteBomExportVoucher(id: string): void {
     const vouchers = this.getBomExportVouchers().filter((v) => v.id !== id);
     this.saveBomExportVouchers(vouchers);
+  },
+
+  // --- USER ACCOUNTS STORAGE & AUTH ---
+  getUsers(): UserAccount[] {
+    const data = localStorage.getItem('thekho_users_v1');
+    if (!data) {
+      const defaultUsers: UserAccount[] = [
+        {
+          id: 'user-admin',
+          username: 'admin',
+          password: '123',
+          fullName: 'Nguyễn Văn Quản Trị',
+          roleTitle: 'Quản Trị Hệ Thống (Admin)',
+          allowedTabs: [
+            'dashboard',
+            'parts',
+            'stock_in',
+            'stock_out',
+            'warehouse_map',
+            'kitting',
+            'buffer',
+            'andon_request',
+            'andon_calling',
+            'andon_delivering',
+            'bin_card',
+            'reports',
+            'settings',
+            'users',
+          ],
+          isActive: true,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: 'user-thukho',
+          username: 'thukho',
+          password: '123',
+          fullName: 'Trần Văn Bình',
+          roleTitle: 'Thủ Kho Trung Tâm',
+          allowedTabs: [
+            'dashboard',
+            'parts',
+            'stock_in',
+            'stock_out',
+            'warehouse_map',
+            'bin_card',
+            'reports',
+          ],
+          isActive: true,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: 'user-kitting',
+          username: 'kitting',
+          password: '123',
+          fullName: 'Lê Thị Hoa',
+          roleTitle: 'Nhân Viên Bóc Tách Kitting',
+          allowedTabs: ['kitting', 'buffer'],
+          isActive: true,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: 'user-daychuyen',
+          username: 'daychuyen',
+          password: '123',
+          fullName: 'Phạm Văn Mạnh',
+          roleTitle: 'Quản Lý Dây Chuyền Lắp Ráp',
+          allowedTabs: ['andon_request', 'andon_calling', 'andon_delivering', 'buffer'],
+          isActive: true,
+          createdAt: new Date().toISOString(),
+        },
+      ];
+      localStorage.setItem('thekho_users_v1', JSON.stringify(defaultUsers));
+      return defaultUsers;
+    }
+    try {
+      const parsed: UserAccount[] = JSON.parse(data);
+      // Migrate legacy 'andon' tab to new granular tabs if needed
+      return parsed.map((u) => {
+        if (u.allowedTabs && u.allowedTabs.includes('andon' as any)) {
+          const newTabs = u.allowedTabs.filter((t) => (t as any) !== 'andon');
+          if (!newTabs.includes('andon_request')) newTabs.push('andon_request');
+          if (!newTabs.includes('andon_calling')) newTabs.push('andon_calling');
+          if (!newTabs.includes('andon_delivering')) newTabs.push('andon_delivering');
+          return { ...u, allowedTabs: newTabs };
+        }
+        return u;
+      });
+    } catch {
+      return [];
+    }
+  },
+
+  saveUsers(users: UserAccount[]): void {
+    localStorage.setItem('thekho_users_v1', JSON.stringify(users));
+  },
+
+  addUser(params: Omit<UserAccount, 'id' | 'createdAt'>): UserAccount {
+    const users = this.getUsers();
+    if (users.some((u) => u.username.toLowerCase() === params.username.toLowerCase())) {
+      throw new Error(`Tên đăng nhập "${params.username}" đã tồn tại!`);
+    }
+
+    const newUser: UserAccount = {
+      id: 'usr-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      username: params.username.trim(),
+      password: params.password,
+      fullName: params.fullName.trim(),
+      roleTitle: params.roleTitle.trim() || 'Nhân viên',
+      allowedTabs: params.allowedTabs && params.allowedTabs.length > 0 ? params.allowedTabs : ['dashboard'],
+      isActive: params.isActive !== undefined ? params.isActive : true,
+      createdAt: new Date().toISOString(),
+    };
+
+    users.push(newUser);
+    this.saveUsers(users);
+    return newUser;
+  },
+
+  updateUser(id: string, updates: Partial<UserAccount>): UserAccount {
+    const users = this.getUsers();
+    const index = users.findIndex((u) => u.id === id);
+    if (index === -1) throw new Error('Không tìm thấy tài khoản người dùng!');
+
+    if (
+      updates.username &&
+      users.some((u) => u.id !== id && u.username.toLowerCase() === updates.username!.toLowerCase())
+    ) {
+      throw new Error(`Tên đăng nhập "${updates.username}" đã bị trùng lặp!`);
+    }
+
+    const updatedUser = {
+      ...users[index],
+      ...updates,
+    };
+
+    users[index] = updatedUser;
+    this.saveUsers(users);
+
+    const current = this.getCurrentUser();
+    if (current && current.id === id) {
+      this.setCurrentUser(updatedUser);
+    }
+
+    return updatedUser;
+  },
+
+  deleteUser(id: string): void {
+    const current = this.getCurrentUser();
+    if (current && current.id === id) {
+      throw new Error('Không thể xóa tài khoản người dùng đang đăng nhập hiện tại!');
+    }
+    const users = this.getUsers().filter((u) => u.id !== id);
+    this.saveUsers(users);
+  },
+
+  getCurrentUser(): UserAccount | null {
+    const data = localStorage.getItem('thekho_current_user_v1');
+    if (!data) return null;
+    try {
+      const u: UserAccount = JSON.parse(data);
+      const users = this.getUsers();
+      const found = users.find((item) => item.id === u.id);
+      if (!found || !found.isActive) return null;
+      return found;
+    } catch {
+      return null;
+    }
+  },
+
+  setCurrentUser(user: UserAccount | null): void {
+    if (!user) {
+      localStorage.removeItem('thekho_current_user_v1');
+    } else {
+      localStorage.setItem('thekho_current_user_v1', JSON.stringify(user));
+    }
+  },
+
+  login(username: string, password: string): { success: boolean; user?: UserAccount; error?: string } {
+    const users = this.getUsers();
+    const target = users.find(
+      (u) => u.username.toLowerCase() === username.trim().toLowerCase()
+    );
+
+    if (!target) {
+      return { success: false, error: 'Tên đăng nhập không tồn tại trên hệ thống!' };
+    }
+
+    if (!target.isActive) {
+      return { success: false, error: 'Tài khoản này hiện đang bị tạm khóa!' };
+    }
+
+    if (target.password !== password) {
+      return { success: false, error: 'Mật khẩu không chính xác!' };
+    }
+
+    const updatedUser = this.updateUser(target.id, {
+      lastLoginAt: new Date().toISOString(),
+    });
+
+    this.setCurrentUser(updatedUser);
+    return { success: true, user: updatedUser };
+  },
+
+  logout(): void {
+    this.setCurrentUser(null);
   },
 };
 

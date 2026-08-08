@@ -1,5 +1,5 @@
 import React from 'react';
-import { ViewTab } from './types';
+import { ViewTab, UserAccount } from './types';
 import {
   Home,
   Package,
@@ -15,7 +15,12 @@ import {
   X,
   Scissors,
   LayoutGrid,
+  Bell,
   BellRing,
+  Truck,
+  Users,
+  LogOut,
+  User,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -25,8 +30,11 @@ interface SidebarProps {
   outOfStockCount: number;
   pendingKittingCount?: number;
   callingAndonCount?: number;
+  deliveringAndonCount?: number;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
+  currentUser?: UserAccount | null;
+  onLogout?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -36,10 +44,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   outOfStockCount,
   pendingKittingCount = 0,
   callingAndonCount = 0,
+  deliveringAndonCount = 0,
   isOpenMobile = false,
   onCloseMobile,
+  currentUser,
+  onLogout,
 }) => {
-  const menuItems: { id: ViewTab; label: string; icon: React.ElementType; badge?: number; badgeColor?: string; section?: string }[] = [
+  const allMenuItems: { id: ViewTab; label: string; icon: React.ElementType; badge?: number; badgeColor?: string; section?: string }[] = [
     { id: 'dashboard', label: 'Trang chủ', icon: Home },
     {
       id: 'parts',
@@ -57,20 +68,57 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Scissors,
       badge: pendingKittingCount > 0 ? pendingKittingCount : undefined,
       badgeColor: 'bg-purple-600',
-      section: 'Kitting & Logistics Buffer',
+      section: 'Kitting & Outbuffer',
     },
     { id: 'buffer', label: 'Sơ Đồ Kệ OUTBUFFER', icon: LayoutGrid },
     {
-      id: 'andon',
-      label: 'Gọi & Giao Hàng (Andon)',
+      id: 'andon_request',
+      label: '1. Sản xuất gọi hàng (Andon)',
+      icon: Bell,
+      section: 'Gọi Hàng & Vận Chuyển',
+    },
+    {
+      id: 'andon_calling',
+      label: '2. Đơn yêu cầu đang gọi',
       icon: BellRing,
       badge: callingAndonCount > 0 ? callingAndonCount : undefined,
       badgeColor: 'bg-amber-500 animate-pulse',
     },
-    { id: 'bin_card', label: 'Lịch sử / Thẻ kho', icon: History, section: 'Báo Cáo & Quản Lý' },
+    {
+      id: 'andon_delivering',
+      label: '3. Đang trên đường vận chuyển',
+      icon: Truck,
+      badge: deliveringAndonCount > 0 ? deliveringAndonCount : undefined,
+      badgeColor: 'bg-indigo-600',
+    },
+    {
+      id: 'andon_history',
+      label: '4. Lịch sử cấp hàng (Andon)',
+      icon: History,
+    },
+    { id: 'bin_card', label: 'Thẻ kho / Nhật ký LK', icon: ClipboardCheck, section: 'Báo Cáo & Quản Lý' },
     { id: 'reports', label: 'Báo cáo', icon: BarChart3 },
     { id: 'settings', label: 'Cài đặt & Dữ liệu', icon: Settings },
+    { id: 'users', label: 'Quản lý tài khoản', icon: Users },
   ];
+
+  // Filter menu items by user allowed tabs if currentUser is provided
+  const menuItems = currentUser && currentUser.allowedTabs
+    ? allMenuItems.filter((item) => {
+        if (currentUser.allowedTabs.includes(item.id)) return true;
+        // Legacy fallback
+        if (currentUser.allowedTabs.includes('andon' as any)) {
+          if (
+            item.id === 'andon_request' ||
+            item.id === 'andon_calling' ||
+            item.id === 'andon_delivering' ||
+            item.id === 'andon_history'
+          )
+            return true;
+        }
+        return false;
+      })
+    : allMenuItems;
 
   const handleSelect = (tab: ViewTab) => {
     onSelectTab(tab);
@@ -105,7 +153,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Navigation Links */}
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-          Danh mục chính
+          Chức năng được cấp quyền ({menuItems.length})
         </div>
         {menuItems.map((item) => {
           const Icon = item.icon;
@@ -144,14 +192,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* Quick Status Footer */}
-      <div className="p-4 border-t border-slate-100 bg-slate-50/50">
-        <div className="flex items-center space-x-2 text-xs text-slate-500">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-          <span className="font-medium text-slate-700">Đang hoạt động (Vercel / Mobile Web)</span>
+      {/* User Account Profile Footer */}
+      {currentUser && (
+        <div className="p-3.5 border-t border-slate-100 bg-slate-50/80 space-y-2">
+          <div className="p-2.5 bg-white border border-slate-200/80 rounded-2xl shadow-2xs space-y-2">
+            <div className="flex items-center space-x-2.5 min-w-0">
+              <div className="w-8 h-8 bg-blue-600 text-white font-black text-xs rounded-xl flex items-center justify-center shrink-0">
+                {currentUser.fullName ? currentUser.fullName.slice(0, 2).toUpperCase() : 'US'}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="font-extrabold text-slate-900 text-xs truncate">
+                  {currentUser.fullName}
+                </h4>
+                <p className="text-[10px] text-blue-700 font-bold truncate">
+                  {currentUser.roleTitle}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-100">
+              <span className="font-mono text-slate-500">@{currentUser.username}</span>
+              <span className="text-emerald-600 font-bold">● Đang hoạt động</span>
+            </div>
+          </div>
+
+          {onLogout && (
+            <button
+              type="button"
+              onClick={() => onLogout()}
+              className="w-full py-2 px-3 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 font-extrabold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center space-x-2 border border-rose-200/80 shadow-2xs"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>ĐĂNG XUẤT TÀI KHOẢN</span>
+            </button>
+          )}
         </div>
-        <p className="text-[11px] text-slate-400 mt-1">Sổ Thẻ Kho Điện Tử v2.5</p>
-      </div>
+      )}
     </div>
   );
 

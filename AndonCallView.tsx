@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MaterialCallRequest, BufferLocationMap, AppSettings, Part } from './types';
+import { MaterialCallRequest, BufferLocationMap, AppSettings, Part, ViewTab } from './types';
 import { storageService } from './storage';
 import { SearchableSelect, SelectOption } from './SearchableSelect';
 import {
@@ -31,6 +31,7 @@ interface AndonCallViewProps {
   settings: AppSettings;
   onRefresh: () => void;
   onNavigateToSettings?: () => void;
+  viewMode?: ViewTab;
 }
 
 export const AndonCallView: React.FC<AndonCallViewProps> = ({
@@ -40,8 +41,24 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
   settings,
   onRefresh,
   onNavigateToSettings,
+  viewMode,
 }) => {
-  const [activeTab, setActiveTab] = useState<'request' | 'logistics' | 'history'>('logistics');
+  const getInitialTab = (): 'request' | 'calling' | 'delivering' | 'history' => {
+    if (viewMode === 'andon_request') return 'request';
+    if (viewMode === 'andon_calling') return 'calling';
+    if (viewMode === 'andon_delivering') return 'delivering';
+    if (viewMode === 'andon_history') return 'history';
+    return 'calling';
+  };
+
+  const [activeTab, setActiveTab] = useState<'request' | 'calling' | 'delivering' | 'history'>(getInitialTab);
+
+  useEffect(() => {
+    if (viewMode === 'andon_request') setActiveTab('request');
+    else if (viewMode === 'andon_calling') setActiveTab('calling');
+    else if (viewMode === 'andon_delivering') setActiveTab('delivering');
+    else if (viewMode === 'andon_history') setActiveTab('history');
+  }, [viewMode]);
 
   // Master parts list
   const allParts = parts && parts.length > 0 ? parts : storageService.getParts();
@@ -326,6 +343,12 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
     return `Cách đây ${diffDays} ngày`;
   };
 
+  const isSpecificTab =
+    viewMode === 'andon_request' ||
+    viewMode === 'andon_calling' ||
+    viewMode === 'andon_delivering' ||
+    viewMode === 'andon_history';
+
   return (
     <div className="space-y-6">
       {/* Top Banner */}
@@ -338,7 +361,11 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
               <span>ANDON MATERIAL CALL & DELIVERY SYSTEM</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-white">
-              Gọi Hàng & Giao Hàng Dây Chuyền (Andon Call)
+              {viewMode === 'andon_request' && '1. Sản Xuất Gọi Hàng (Andon Call)'}
+              {viewMode === 'andon_calling' && '2. Đơn Yêu Cầu Đang Gọi (Chờ Nhận Giao)'}
+              {viewMode === 'andon_delivering' && '3. Đang Trên Đường Vận Chuyển (In Transit)'}
+              {viewMode === 'andon_history' && '4. Lịch Sử Giao Cấp Hàng (Andon)'}
+              {(!isSpecificTab) && 'Gọi Hàng & Giao Hàng Dây Chuyền (Andon Call)'}
             </h1>
             <p className="text-amber-100 text-xs sm:text-sm max-w-2xl">
               Hệ thống tín hiệu Andon thời gian thực: Dây chuyền tìm chọn mã linh kiện & số lượng cần gọi, bộ phận Logistics tự động định vị vị trí kệ Outbuffer cấp hàng.
@@ -378,20 +405,35 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
         </div>
       )}
 
-      {/* Main Tabs Header */}
+      {/* Main Container */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="flex border-b border-slate-200 bg-slate-50 p-2 gap-2">
+        {/* Main Tabs Header - Only shown if not in specific single tab view */}
+        {!isSpecificTab && (
+          <div className="flex border-b border-slate-200 bg-slate-50 p-2 gap-2 overflow-x-auto">
           <button
             type="button"
-            onClick={() => setActiveTab('logistics')}
-            className={`flex-1 py-3 px-4 rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer ${
-              activeTab === 'logistics'
+            onClick={() => setActiveTab('request')}
+            className={`py-3 px-4 rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 shrink-0 cursor-pointer ${
+              activeTab === 'request'
                 ? 'bg-amber-600 text-white shadow-md'
                 : 'text-slate-600 hover:bg-slate-200'
             }`}
           >
-            <Truck className="w-4 h-4" />
-            <span>LOGISTICS GIAO HÀNG (ĐIỀU PHỐI)</span>
+            <Send className="w-4 h-4" />
+            <span>1. SẢN XUẤT GỌI HÀNG (ANDON)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('calling')}
+            className={`py-3 px-4 rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 shrink-0 cursor-pointer ${
+              activeTab === 'calling'
+                ? 'bg-amber-600 text-white shadow-md'
+                : 'text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            <BellRing className="w-4 h-4" />
+            <span>2. ĐƠN YÊU CẦU ĐANG GỌI</span>
             {callingReqs.length > 0 && (
               <span className="px-2 py-0.5 text-[10px] bg-red-500 text-white font-black rounded-full animate-pulse">
                 {callingReqs.length}
@@ -401,42 +443,48 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
 
           <button
             type="button"
-            onClick={() => setActiveTab('request')}
-            className={`flex-1 py-3 px-4 rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer ${
-              activeTab === 'request'
+            onClick={() => setActiveTab('delivering')}
+            className={`py-3 px-4 rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 shrink-0 cursor-pointer ${
+              activeTab === 'delivering'
                 ? 'bg-amber-600 text-white shadow-md'
                 : 'text-slate-600 hover:bg-slate-200'
             }`}
           >
-            <Send className="w-4 h-4" />
-            <span>SẢN XUẤT GỌI HÀNG (ANDON CALL)</span>
+            <Truck className="w-4 h-4" />
+            <span>3. ĐANG VẬN CHUYỂN</span>
+            {deliveringReqs.length > 0 && (
+              <span className="px-2 py-0.5 text-[10px] bg-blue-600 text-white font-black rounded-full">
+                {deliveringReqs.length}
+              </span>
+            )}
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('history')}
-            className={`flex-1 py-3 px-4 rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+            className={`py-3 px-4 rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center space-x-2 shrink-0 cursor-pointer ${
               activeTab === 'history'
                 ? 'bg-amber-600 text-white shadow-md'
                 : 'text-slate-600 hover:bg-slate-200'
             }`}
           >
             <Clock className="w-4 h-4" />
-            <span>LỊCH SỬ GIAO CẤP HÀNG</span>
+            <span>4. LỊCH SỬ GIAO CẤP HÀNG</span>
             <span className="px-2 py-0.5 text-[10px] bg-amber-100 text-amber-900 font-bold rounded-full">
               {completedReqs.length}
             </span>
           </button>
         </div>
+        )}
 
-        {/* TAB 1: LOGISTICS DELIVERY DISPATCH */}
-        {activeTab === 'logistics' && (
+        {/* TAB 1: CALLING REQUESTS (ĐƠN YÊU CẦU ĐANG GỌI) */}
+        {activeTab === 'calling' && (
           <div className="p-4 sm:p-6 space-y-6">
             {/* Active Delivering Staff Picker */}
             <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center space-x-2 text-amber-900 font-bold text-xs">
                 <User className="w-4 h-4 text-amber-700" />
-                <span>Nhân Viên Logistics Đang Trực:</span>
+                <span>Nhân Viên Logistics / Thủ Kho Nhận Giao Hàng:</span>
               </div>
               <select
                 value={delivererName}
@@ -455,31 +503,30 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
               </select>
             </div>
 
-            {/* Pending & Delivering Cards */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Calling Requests */}
-              <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-2 gap-1">
-                  <div>
-                    <h3 className="font-extrabold text-sm text-slate-900 flex items-center space-x-2">
-                      <Bell className="w-4 h-4 text-red-500 animate-pulse" />
-                      <span>Đơn Yêu Cầu Đang Gọi (Chờ Nhận)</span>
-                    </h3>
-                    <p className="text-[11px] text-slate-500 italic">
-                      * Tự động ưu tiên FIFO: Gọi trước sẽ đứng đầu danh sách để giao trước
-                    </p>
-                  </div>
-                  <span className="text-xs font-bold text-red-600 bg-red-50 px-2.5 py-0.5 rounded-full border border-red-200 self-start sm:self-auto">
-                    {callingReqs.length} Đơn
-                  </span>
+            {/* Calling Requests List */}
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-2 gap-1">
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900 flex items-center space-x-2">
+                    <Bell className="w-4 h-4 text-red-500 animate-pulse" />
+                    <span>Danh Sách Đơn Yêu Cầu Đang Phát Tín Hiệu Gọi Hàng (Calling Requests)</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 italic">
+                    * Tự động ưu tiên FIFO: Yêu cầu gọi trước xếp trên cùng để xử lý cấp hàng trước
+                  </p>
                 </div>
+                <span className="text-xs font-bold text-red-600 bg-red-50 px-2.5 py-0.5 rounded-full border border-red-200 self-start sm:self-auto">
+                  {callingReqs.length} Đơn
+                </span>
+              </div>
 
-                {callingReqs.length === 0 ? (
-                  <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200 italic text-xs">
-                    Hiện không có yêu cầu gọi hàng mới từ Dây Chuyền.
-                  </div>
-                ) : (
-                  callingReqs.map((req, idx) => (
+              {callingReqs.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200 italic text-xs">
+                  Hiện không có yêu cầu gọi hàng mới nào từ Dây Chuyền.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {callingReqs.map((req, idx) => (
                     <div
                       key={req.requestId}
                       className="p-5 bg-white border-2 border-red-200 rounded-2xl shadow-xs hover:shadow-md transition-all space-y-3 relative overflow-hidden"
@@ -497,7 +544,7 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
                         >
                           <Zap className="w-3 h-3" />
                           <span>
-                            {idx === 0 ? 'ƯU TIÊN #1 (GỌI ĐẦU TIÊN - CẦN PHÁT HÀNG TRƯỚC)' : `ƯU TIÊN #${idx + 1}`}
+                            {idx === 0 ? 'ƯU TIÊN #1 (GỌI ĐẦU TIÊN)' : `ƯU TIÊN #${idx + 1}`}
                           </span>
                         </span>
                         {req.isDirectKitting ? (
@@ -529,131 +576,129 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
                           📍 Nơi Nhận: <strong className="text-slate-900 text-sm font-extrabold">{req.assemblyLine}</strong>
                         </span>
                         <div>
-                          {/* Tên Linh Kiện TO RÕ TRÊN CÙNG */}
-                          <h4 className="text-base sm:text-lg font-black text-slate-900 leading-snug">
+                          <h4 className="text-base font-black text-slate-900 leading-snug">
                             {req.partName}
                           </h4>
-                          {/* Mã Linh Kiện NẰM DƯỚI TÊN LINH KIỆN */}
                           <div className="mt-1 flex items-center space-x-2">
                             <span className="text-[11px] font-bold text-slate-500">Mã LK:</span>
-                            <span className="font-mono font-black text-purple-800 text-xs sm:text-sm bg-purple-50 border border-purple-200 px-2.5 py-0.5 rounded-lg inline-block">
+                            <span className="font-mono font-black text-purple-800 text-xs bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-lg inline-block">
                               {req.partCode}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Explicit Delivery Route Banner */}
                       {req.isDirectKitting || req.bufferLocation.includes('KITTING') ? (
-                        <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-xl text-xs space-y-1.5">
+                        <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs space-y-1">
                           <span className="font-extrabold text-amber-900 flex items-center space-x-1 uppercase text-[10px]">
                             <Zap className="w-3.5 h-3.5 text-amber-600" />
-                            <span>LỘ TRÌNH BÓC TÁCH & GIAO THẲNG DÂY CHUYỀN (CROSS-DOCKING):</span>
+                            <span>LỘ TRÌNH KITTING CROSS-DOCKING:</span>
                           </span>
-                          <p className="font-bold text-slate-800 flex items-center space-x-2 flex-wrap">
-                            <span>1. Đến <strong className="text-amber-900 font-extrabold">Khu Bóc Tách (Kitting Area)</strong> bóc tách <strong className="text-emerald-700 font-extrabold">[{req.requestedQty} {req.unit}]</strong></span>
-                            <ArrowRight className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                            <span>2. Giao TRỰC TIẾP tới <strong className="text-slate-900 font-extrabold">[{req.assemblyLine}]</strong></span>
-                          </p>
-                          <p className="text-[10px] text-amber-800 font-medium italic">
-                            * Linh kiện bóc tách xong giao ngay cho Dây Chuyền, không cần lưu qua kệ Outbuffer.
+                          <p className="font-bold text-slate-800 text-[11px]">
+                            1. Đến Khu Bóc Tách Kitting lấy <strong className="text-emerald-700 font-extrabold">[{req.requestedQty} {req.unit}]</strong> <br />
+                            2. Giao trực tiếp tới <strong className="text-slate-900 font-extrabold">[{req.assemblyLine}]</strong>
                           </p>
                         </div>
                       ) : (
                         <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs space-y-1">
-                          <span className="font-extrabold text-blue-900 block uppercase text-[10px]">LỘ TRÌNH LẤY HÀNG OUTBUFFER (FIFO):</span>
-                          <p className="font-bold text-slate-800 flex items-center space-x-2 flex-wrap">
-                            <span>1. Đến Kệ <strong className="text-blue-700 font-mono font-black">[{req.bufferLocation}]</strong></span>
-                            <ArrowRight className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                            <span>2. Lấy <strong className="text-emerald-700 font-extrabold">[{req.requestedQty} {req.unit}]</strong></span>
-                            <ArrowRight className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                            <span>3. Giao tới <strong className="text-slate-900 font-bold">[{req.assemblyLine}]</strong></span>
+                          <span className="font-extrabold text-blue-900 block uppercase text-[10px]">LỘ TRÌNH LẤY HÀNG OUTBUFFER:</span>
+                          <p className="font-bold text-slate-800 text-[11px]">
+                            1. Đến Kệ <strong className="text-blue-700 font-mono font-black">[{req.bufferLocation}]</strong> lấy <strong className="text-emerald-700 font-extrabold">[{req.requestedQty} {req.unit}]</strong> <br />
+                            2. Giao tới <strong className="text-slate-900 font-bold">[{req.assemblyLine}]</strong>
                           </p>
                         </div>
                       )}
 
                       <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-100">
-                        <span>Gọi bởi: {req.requestedBy}</span>
+                        <span>Người gọi: {req.requestedBy}</span>
                         <button
                           type="button"
                           onClick={() => handleStartDelivery(req.requestId)}
                           className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-xs transition-all cursor-pointer flex items-center space-x-1.5"
                         >
-                          <Truck className="w-3.5 h-3.5" />
+                          <Truck className="w-3 h-3.5" />
                           <span>NHẬN ĐƠN DELIVERY</span>
                         </button>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
-
-              {/* Delivering Requests */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <h3 className="font-extrabold text-sm text-slate-900 flex items-center space-x-2">
-                    <Truck className="w-4 h-4 text-blue-600" />
-                    <span>Đang Trên Đường Vận Chuyển (Delivering)</span>
-                  </h3>
-                  <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200">
-                    {deliveringReqs.length} Đơn
-                  </span>
+                  ))}
                 </div>
-
-                {deliveringReqs.length === 0 ? (
-                  <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200 italic text-xs">
-                    Chưa có đơn nào đang vận chuyển.
-                  </div>
-                ) : (
-                  deliveringReqs.map((req) => (
-                    <div
-                      key={req.requestId}
-                      className="p-5 bg-white border border-blue-200 rounded-2xl shadow-xs space-y-3"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 font-bold text-[10px] rounded-md uppercase">
-                          ĐANG VẬN CHUYỂN
-                        </span>
-                        <span className="text-slate-400 text-[11px]">
-                          Thủ kho: {req.deliveredBy || delivererName}
-                        </span>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        {/* Tên Linh Kiện TO RÕ TRÊN CÙNG */}
-                        <h4 className="text-base sm:text-lg font-black text-slate-900 leading-snug">
-                          {req.partName}
-                        </h4>
-                        {/* Mã Linh Kiện NẰM DƯỚI TÊN LINH KIỆN */}
-                        <div className="flex items-center space-x-2">
-                          <span className="text-[11px] font-bold text-slate-500">Mã LK:</span>
-                          <span className="font-mono font-black text-purple-800 text-xs sm:text-sm bg-purple-50 border border-purple-200 px-2.5 py-0.5 rounded-lg inline-block">
-                            {req.partCode}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-600 pt-1">
-                          Số lượng: <strong className="text-emerald-700 font-black text-sm">{req.requestedQty} {req.unit}</strong> | Kệ lấy: <strong className="text-blue-700 font-mono font-extrabold">{req.bufferLocation}</strong>
-                        </p>
-                      </div>
-
-                      <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl text-xs space-y-1">
-                        <span className="font-bold text-blue-900">Bàn máy nhận hàng:</span>
-                        <p className="font-bold text-slate-800">{req.assemblyLine}</p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleCompleteDelivery(req.requestId)}
-                        className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center space-x-2 text-xs"
-                      >
-                        <Check className="w-4 h-4" />
-                        <span>XÁC NHẬN ĐÃ GIAO HÀNG TỚI BÀN MÁY</span>
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
+              )}
             </div>
+          </div>
+        )}
+
+        {/* TAB 2: IN-TRANSIT DELIVERIES (ĐANG TRÊN ĐƯỜNG VẬN CHUYỂN) */}
+        {activeTab === 'delivering' && (
+          <div className="p-4 sm:p-6 space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+              <div>
+                <h3 className="font-extrabold text-sm sm:text-base text-slate-900 flex items-center space-x-2">
+                  <Truck className="w-5 h-5 text-blue-600" />
+                  <span>Danh Sách Đơn Đang Trên Đường Vận Chuyển (In Transit)</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Các đơn hàng đã được nhân viên giao hàng tiếp nhận và đang trên đường vận chuyển tới dây chuyền.
+                </p>
+              </div>
+              <span className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full border border-blue-200">
+                {deliveringReqs.length} Đơn
+              </span>
+            </div>
+
+            {deliveringReqs.length === 0 ? (
+              <div className="p-12 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200 italic text-xs">
+                Hiện chưa có đơn hàng nào đang trên đường vận chuyển.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {deliveringReqs.map((req) => (
+                  <div
+                    key={req.requestId}
+                    className="p-5 bg-white border-2 border-blue-200 rounded-2xl shadow-xs space-y-3"
+                  >
+                    <div className="flex items-center justify-between border-b border-blue-100 pb-2">
+                      <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 font-black text-[10px] rounded-md uppercase">
+                        🚚 ĐANG TRÊN ĐƯỜNG GIAO HÀNG
+                      </span>
+                      <span className="text-slate-600 text-xs font-bold">
+                        Giao bởi: <strong className="text-slate-900">{req.deliveredBy || delivererName}</strong>
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <h4 className="text-base font-black text-slate-900 leading-snug">
+                        {req.partName}
+                      </h4>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-[11px] font-bold text-slate-500">Mã LK:</span>
+                        <span className="font-mono font-black text-purple-800 text-xs bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-lg inline-block">
+                          {req.partCode}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 pt-1">
+                        Số lượng giao: <strong className="text-emerald-700 font-black text-sm">{req.requestedQty} {req.unit}</strong> | Kệ lấy: <strong className="text-blue-700 font-mono font-extrabold">{req.bufferLocation}</strong>
+                      </p>
+                    </div>
+
+                    <div className="p-3 bg-blue-50/80 border border-blue-100 rounded-xl text-xs space-y-1">
+                      <span className="font-bold text-blue-900">Nơi nhận hàng:</span>
+                      <p className="font-extrabold text-slate-900 text-sm">{req.assemblyLine}</p>
+                      <p className="text-[11px] text-slate-500">Người yêu cầu: {req.requestedBy}</p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCompleteDelivery(req.requestId)}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center space-x-2 text-xs"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>XÁC NHẬN ĐÃ GIAO HÀNG TỚI BÀN MÁY</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

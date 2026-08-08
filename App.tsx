@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Part, Transaction, AppSettings, ViewTab, KittingQueueItem, BufferLocationMap, MaterialCallRequest } from './types';
+import { Part, Transaction, AppSettings, ViewTab, KittingQueueItem, BufferLocationMap, MaterialCallRequest, UserAccount } from './types';
 import { storageService } from './storage';
-import { Menu, Boxes } from 'lucide-react';
+import { Menu, Boxes, LogOut } from 'lucide-react';
 
 import { Sidebar } from './Sidebar';
 import { ElectronicBinCardModal } from './ElectronicBinCardModal';
@@ -19,8 +19,11 @@ import { BinCardHistoryView } from './BinCardHistoryView';
 import { WarehouseMapView } from './WarehouseMapView';
 import { ReportsView } from './ReportsView';
 import { SettingsView } from './SettingsView';
+import { UserManagementView } from './UserManagementView';
+import { LoginView } from './LoginView';
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => storageService.getCurrentUser());
   const [currentTab, setCurrentTab] = useState<ViewTab>('dashboard');
   const [parts, setParts] = useState<Part[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -30,6 +33,26 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(storageService.getSettings());
   const [searchTerm, setSearchTerm] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Automatically adjust currentTab to the user's allowedTabs if currentTab is forbidden
+  useEffect(() => {
+    if (currentUser && currentUser.allowedTabs && currentUser.allowedTabs.length > 0) {
+      const allowed = currentUser.allowedTabs;
+      const isAllowed =
+        allowed.includes(currentTab) ||
+        (allowed.includes('andon' as any) &&
+          (currentTab === 'andon_request' || currentTab === 'andon_calling' || currentTab === 'andon_delivering' || currentTab === 'andon_history'));
+      if (!isAllowed) {
+        setCurrentTab(allowed[0]);
+      }
+    }
+  }, [currentUser, currentTab]);
+
+  // Logout handler
+  const handleLogout = () => {
+    storageService.logout();
+    setCurrentUser(null);
+  };
 
   // Bin Card Modal State
   const [selectedBinCardPart, setSelectedBinCardPart] = useState<Part | null>(null);
@@ -93,6 +116,11 @@ export default function App() {
   const outOfStockCount = parts.filter((p) => p.currentStock === 0).length;
   const pendingKittingCount = kittingQueue.filter((k) => k.status === 'PENDING_KITTING').length;
   const callingAndonCount = materialCalls.filter((m) => m.status === 'CALLING').length;
+  const deliveringAndonCount = materialCalls.filter((m) => m.status === 'DELIVERING').length;
+
+  if (!currentUser) {
+    return <LoginView onLoginSuccess={(u) => setCurrentUser(u)} warehouseName={settings.warehouseName} />;
+  }
 
   return (
     <div className="flex h-screen bg-slate-100 font-sans text-slate-800 antialiased overflow-hidden">
@@ -104,8 +132,11 @@ export default function App() {
         outOfStockCount={outOfStockCount}
         pendingKittingCount={pendingKittingCount}
         callingAndonCount={callingAndonCount}
+        deliveringAndonCount={deliveringAndonCount}
         isOpenMobile={isMobileMenuOpen}
         onCloseMobile={() => setIsMobileMenuOpen(false)}
+        currentUser={currentUser}
+        onLogout={handleLogout}
       />
 
       {/* Main Right Workspace */}
@@ -129,6 +160,16 @@ export default function App() {
               </span>
             </div>
           </div>
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl border border-rose-200 flex items-center space-x-1.5 text-xs font-bold cursor-pointer"
+            title="Đăng xuất khỏi hệ thống"
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="hidden sm:inline">Thoát</span>
+          </button>
         </div>
 
         {/* View Router Body */}
@@ -189,7 +230,11 @@ export default function App() {
             />
           )}
 
-          {currentTab === 'andon' && (
+          {(currentTab === 'andon' ||
+            currentTab === 'andon_request' ||
+            currentTab === 'andon_calling' ||
+            currentTab === 'andon_delivering' ||
+            currentTab === 'andon_history') && (
             <AndonCallView
               materialCalls={materialCalls}
               buffers={bufferLocations}
@@ -197,6 +242,7 @@ export default function App() {
               settings={settings}
               onRefresh={refreshData}
               onNavigateToSettings={() => setCurrentTab('settings')}
+              viewMode={currentTab}
             />
           )}
 
@@ -233,6 +279,10 @@ export default function App() {
               onUpdateSettings={setSettings}
               onRefreshAll={refreshData}
             />
+          )}
+
+          {currentTab === 'users' && (
+            <UserManagementView currentUser={currentUser} />
           )}
         </main>
       </div>

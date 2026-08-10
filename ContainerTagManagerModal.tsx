@@ -188,41 +188,111 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
           size: A4 portrait;
           margin: 8mm 10mm;
         }
-        @media print {
-          html, body {
-            margin: 0;
-            padding: 0;
-            width: 210mm;
-            background: #fff;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          .a4-page {
-            width: 190mm;
-            height: 275mm;
-            box-sizing: border-box;
-            page-break-after: always;
-            break-after: page;
-            display: grid;
-            grid-template-columns: repeat(2, 90mm);
-            grid-template-rows: repeat(4, 60mm);
-            gap: 4mm 8mm;
-            justify-content: center;
-            align-content: start;
-            margin: 0 auto;
-          }
-          .tag-card {
-            width: 90mm !important;
-            height: 60mm !important;
-            box-sizing: border-box !important;
-            border: 1.5px solid #000 !important;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
-          }
+        * {
+          box-sizing: border-box !important;
         }
-        body {
-          font-family: Arial, sans-serif;
+        html, body {
+          margin: 0;
+          padding: 0;
+          width: 210mm;
+          background: #fff;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          font-family: Arial, Helvetica, sans-serif;
+        }
+        .a4-page {
+          width: 190mm;
+          height: 275mm;
+          box-sizing: border-box;
+          page-break-after: always;
+          break-after: page;
+          display: grid;
+          grid-template-columns: repeat(2, 90mm);
+          grid-template-rows: repeat(4, 60mm);
+          gap: 4mm 8mm;
+          justify-content: center;
+          align-content: start;
+          margin: 0 auto;
+        }
+        .tag-card {
+          width: 90mm !important;
+          height: 60mm !important;
+          max-width: 90mm !important;
+          max-height: 60mm !important;
+          box-sizing: border-box !important;
+          border: 1.5px solid #000 !important;
+          padding: 1.2mm 2mm !important;
+          background: #ffffff !important;
+          color: #000000 !important;
+          font-family: Arial, Helvetica, sans-serif !important;
+          position: relative !important;
+          overflow: hidden !important;
+          display: flex !important;
+          flex-direction: column !important;
+          justify-content: space-between !important;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+        .tag-card-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          border-bottom: 1.5px solid #000;
+          padding-bottom: 1px;
+          margin-bottom: 1px;
+          height: 5.5mm;
+          box-sizing: border-box;
+        }
+        .tag-card-title {
+          font-weight: 900;
+          font-size: 9.5px;
+          letter-spacing: -0.2px;
           color: #000;
+          white-space: nowrap;
+        }
+        .tag-card-stt {
+          font-weight: 900;
+          font-size: 8.5px;
+          font-family: monospace;
+          border: 1px solid #000;
+          padding: 0 3px;
+          background: #fff;
+          white-space: nowrap;
+        }
+        .tag-card-table {
+          width: 100%;
+          border-collapse: collapse;
+          table-layout: fixed;
+          border: 1px solid #000;
+          font-size: 8px;
+          color: #000;
+          box-sizing: border-box;
+        }
+        .tag-card-table td {
+          border: 1px solid #000;
+          padding: 1px 2px;
+          vertical-align: middle;
+          box-sizing: border-box;
+          overflow: hidden;
+        }
+        .lbl-cell {
+          background-color: #f1f5f9 !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          font-weight: bold;
+          font-size: 8px;
+          color: #000;
+        }
+        .tag-card-footer {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 7.5px;
+          font-family: monospace;
+          color: #000;
+          padding-top: 1px;
+          height: 3.5mm;
+          box-sizing: border-box;
         }
       `;
       printHtml(printContainerRef.current.innerHTML, styles);
@@ -232,48 +302,173 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
   // Render a single 90mm x 60mm Tag Card based on Photo 4
   const renderTagCard = (tag: MasterKittingTag, copyIndex?: number) => {
     const grp = tag.groupConfig;
+
+    // Clean STT string to prevent double "Số Số 1"
+    const rawStt = tag.stt || '1';
+    const displayStt = rawStt.toLowerCase().includes('số') ? rawStt : `Số ${rawStt}`;
+
+    // Dynamic auto-scaling font size for long part names and codes
+    const getPartNameFontSize = (text: string) => {
+      if (text.length > 35) return '6.5px';
+      if (text.length > 25) return '7px';
+      if (text.length > 18) return '7.5px';
+      return '8.5px';
+    };
+
+    const getPartCodeFontSize = (text: string) => {
+      if (text.length > 25) return '7px';
+      if (text.length > 18) return '7.5px';
+      return '8.5px';
+    };
+
     return (
       <div
         key={`${tag.id}-${copyIndex ?? 0}`}
-        className="tag-card bg-white border-2 border-black p-1.5 text-black font-sans shadow-xs relative flex flex-col justify-between overflow-hidden"
+        className="tag-card"
         style={{
           width: '90mm',
           height: '60mm',
+          maxWidth: '90mm',
+          maxHeight: '60mm',
           boxSizing: 'border-box',
+          border: '1.5px solid #000',
+          padding: '1.2mm 2mm',
+          backgroundColor: '#ffffff',
+          color: '#000000',
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          position: 'relative',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
           pageBreakInside: 'avoid',
           breakInside: 'avoid',
         }}
       >
         {/* Header Title & STT Box */}
-        <div className="border-b-2 border-black pb-0.5 mb-0.5 flex items-center justify-between">
-          <div className="font-extrabold text-[11px] tracking-tight text-black flex items-center space-x-1">
-            <span>[SUNHOUSE - NMBD] PHIẾU THÔNG TIN</span>
+        <div
+          className="tag-card-header"
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            borderBottom: '1.5px solid #000',
+            paddingBottom: '1px',
+            marginBottom: '1px',
+            height: '5.5mm',
+            boxSizing: 'border-box',
+          }}
+        >
+          <div
+            className="tag-card-title"
+            style={{
+              fontWeight: 900,
+              fontSize: '9.5px',
+              letterSpacing: '-0.2px',
+              color: '#000',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            [SUNHOUSE - NMBD] PHIẾU THÔNG TIN
           </div>
-          <div className="font-black text-[10px] font-mono text-black border border-black px-1.5 py-0.2 bg-white shrink-0">
-            Số {tag.stt || '1'}
+          <div
+            className="tag-card-stt"
+            style={{
+              fontWeight: 900,
+              fontSize: '8.5px',
+              fontFamily: 'monospace',
+              border: '1px solid #000',
+              padding: '0 3px',
+              backgroundColor: '#fff',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {displayStt}
           </div>
         </div>
 
-        {/* 6-Row Grid Table (Exact layout from Photo 4) */}
-        <table className="w-full border-collapse text-[9.5px] font-sans border border-black text-black leading-snug">
+        {/* 6-Row Grid Table (Strictly bounded 90mm x 60mm layout) */}
+        <table
+          className="tag-card-table"
+          style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            tableLayout: 'fixed',
+            border: '1px solid #000',
+            fontSize: '8px',
+            color: '#000',
+            boxSizing: 'border-box',
+          }}
+        >
+          <colgroup>
+            <col style={{ width: '21%' }} />
+            <col style={{ width: '32%' }} />
+            <col style={{ width: '23%' }} />
+            <col style={{ width: '24%' }} />
+          </colgroup>
           <tbody>
             {/* Row 1: Nhóm | Nhóm tên | NCC | Color Pill */}
-            <tr className="border-b border-black">
-              <td className="border-r border-black px-1 py-0.5 font-bold w-[18%] bg-slate-100">
+            <tr style={{ height: '6.5mm' }}>
+              <td
+                className="lbl-cell"
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  backgroundColor: '#f1f5f9',
+                  fontWeight: 'bold',
+                  fontSize: '8px',
+                }}
+              >
                 Nhóm
               </td>
-              <td className="border-r border-black px-1 py-0.5 font-extrabold w-[38%] truncate">
+              <td
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  fontWeight: 'bold',
+                  fontSize: '8px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
                 {tag.groupName}
               </td>
-              <td className="border-r border-black px-1 py-0.5 font-bold w-[14%] bg-slate-100">
+              <td
+                className="lbl-cell"
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  backgroundColor: '#f1f5f9',
+                  fontWeight: 'bold',
+                  fontSize: '8px',
+                }}
+              >
                 NCC
               </td>
-              <td className="px-1 py-0.5 w-[30%] text-center align-middle">
+              <td
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px',
+                  textAlign: 'center',
+                  verticalAlign: 'middle',
+                }}
+              >
                 <div
-                  className="w-full px-1 py-0.5 rounded border border-black font-extrabold text-[9px] text-white flex items-center justify-center shadow-2xs leading-tight"
                   style={{
                     backgroundColor: grp.colorHex,
                     color: grp.textColorHex,
+                    padding: '1px 2px',
+                    borderRadius: '3px',
+                    border: '1px solid #000',
+                    fontWeight: 900,
+                    fontSize: '7.5px',
+                    textAlign: 'center',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    lineHeight: '1.1',
+                    maxHeight: '5.5mm',
                   }}
                 >
                   {grp.name}
@@ -282,88 +477,300 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
             </tr>
 
             {/* Row 2: Tên linh kiện | Value | Quy cách CCDC | Value */}
-            <tr className="border-b border-black">
-              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+            <tr style={{ height: '7.5mm' }}>
+              <td
+                className="lbl-cell"
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  backgroundColor: '#f1f5f9',
+                  fontWeight: 'bold',
+                  fontSize: '8px',
+                }}
+              >
                 Tên linh kiện
               </td>
-              <td className="border-r border-black px-1 py-0.5 font-black text-[10px] leading-tight">
+              <td
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  fontWeight: 900,
+                  fontSize: getPartNameFontSize(tag.partName || ''),
+                  lineHeight: '1.1',
+                  wordBreak: 'break-word',
+                  overflow: 'hidden',
+                  maxHeight: '7mm',
+                }}
+              >
                 {tag.partName}
               </td>
-              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+              <td
+                className="lbl-cell"
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  backgroundColor: '#f1f5f9',
+                  fontWeight: 'bold',
+                  fontSize: '8px',
+                }}
+              >
                 Quy cách CCDC
               </td>
-              <td className="px-1 py-0.5 font-extrabold text-[9px]">
+              <td
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  fontWeight: 'bold',
+                  fontSize: '8px',
+                }}
+              >
                 {tag.ccdcSpec || '0'}
               </td>
             </tr>
 
             {/* Row 3: Mã linh kiện | Value | Ghi chú | Số ...... */}
-            <tr className="border-b border-black">
-              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+            <tr style={{ height: '6.5mm' }}>
+              <td
+                className="lbl-cell"
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  backgroundColor: '#f1f5f9',
+                  fontWeight: 'bold',
+                  fontSize: '8px',
+                }}
+              >
                 Mã linh kiện
               </td>
-              <td className="border-r border-black px-1 py-0.5 font-mono font-black text-[10px]">
+              <td
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  fontFamily: 'monospace',
+                  fontWeight: 900,
+                  fontSize: getPartCodeFontSize(tag.partCode || ''),
+                  lineHeight: '1.1',
+                  wordBreak: 'break-all',
+                  overflow: 'hidden',
+                }}
+              >
                 {tag.partCode}
               </td>
-              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+              <td
+                className="lbl-cell"
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  backgroundColor: '#f1f5f9',
+                  fontWeight: 'bold',
+                  fontSize: '8px',
+                }}
+              >
                 Ghi chú
               </td>
-              <td className="px-1 py-0.5 font-mono text-[9px]">Số ......</td>
+              <td
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  fontFamily: 'monospace',
+                  fontSize: '7.5px',
+                }}
+              >
+                Số ......
+              </td>
             </tr>
 
             {/* Row 4: Số lượng | Value | ĐVT | Value */}
-            <tr className="border-b border-black">
-              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+            <tr style={{ height: '6.5mm' }}>
+              <td
+                className="lbl-cell"
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  backgroundColor: '#f1f5f9',
+                  fontWeight: 'bold',
+                  fontSize: '8px',
+                }}
+              >
                 Số lượng
               </td>
-              <td className="border-r border-black px-1 py-0.5 font-black text-xs">
+              <td
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  fontWeight: 900,
+                  fontSize: '9.5px',
+                }}
+              >
                 {tag.standardQty > 0 ? tag.standardQty : ''}
               </td>
-              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+              <td
+                className="lbl-cell"
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  backgroundColor: '#f1f5f9',
+                  fontWeight: 'bold',
+                  fontSize: '8px',
+                }}
+              >
                 ĐVT
               </td>
-              <td className="px-1 py-0.5 font-bold">{tag.unit || 'cái/bộ'}</td>
+              <td
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  fontWeight: 'bold',
+                  fontSize: '8px',
+                }}
+              >
+                {tag.unit || 'cái/bộ'}
+              </td>
             </tr>
 
             {/* Row 5: Khối lượng | - | Tần suất | 1h / 1 lần */}
-            <tr className="border-b border-black">
-              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+            <tr style={{ height: '6.5mm' }}>
+              <td
+                className="lbl-cell"
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  backgroundColor: '#f1f5f9',
+                  fontWeight: 'bold',
+                  fontSize: '8px',
+                }}
+              >
                 Khối lượng
               </td>
-              <td className="border-r border-black px-1 py-0.5 font-bold">-</td>
-              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+              <td
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  fontWeight: 'bold',
+                  fontSize: '8px',
+                }}
+              >
+                -
+              </td>
+              <td
+                className="lbl-cell"
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  backgroundColor: '#f1f5f9',
+                  fontWeight: 'bold',
+                  fontSize: '8px',
+                }}
+              >
                 Tần suất
               </td>
-              <td className="px-1 py-0.5 font-bold">{tag.mfgFrequency || '1h / 1 lần'}</td>
+              <td
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  fontWeight: 'bold',
+                  fontSize: '8px',
+                }}
+              >
+                {tag.mfgFrequency || '1h / 1 lần'}
+              </td>
             </tr>
 
             {/* Row 6: Mã vạch QR | QR SVG | Thời gian cần thực | ......(h) */}
-            <tr>
-              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+            <tr style={{ height: '12mm' }}>
+              <td
+                className="lbl-cell"
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  backgroundColor: '#f1f5f9',
+                  fontWeight: 'bold',
+                  fontSize: '8px',
+                }}
+              >
                 Mã vạch QR
               </td>
-              <td className="border-r border-black px-1 py-0.5 text-center bg-white align-middle">
-                <div className="inline-block p-0.5 bg-white border border-black rounded">
+              <td
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px',
+                  textAlign: 'center',
+                  backgroundColor: '#ffffff',
+                  verticalAlign: 'middle',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'inline-block',
+                    padding: '1px',
+                    backgroundColor: '#fff',
+                    border: '1px solid #000',
+                    borderRadius: '2px',
+                    lineHeight: 0,
+                  }}
+                >
                   <QRCodeSVG
                     value={tag.qrPayload}
-                    size={36}
+                    size={28}
                     level="M"
                     includeMargin={false}
                   />
                 </div>
               </td>
-              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+              <td
+                className="lbl-cell"
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  backgroundColor: '#f1f5f9',
+                  fontWeight: 'bold',
+                  fontSize: '8px',
+                }}
+              >
                 Thời gian cần thực
               </td>
-              <td className="px-1 py-0.5 font-mono text-[9px]">......(h)</td>
+              <td
+                style={{
+                  border: '1px solid #000',
+                  padding: '1px 2px',
+                  fontFamily: 'monospace',
+                  fontSize: '7.5px',
+                }}
+              >
+                ......(h)
+              </td>
             </tr>
           </tbody>
         </table>
 
         {/* Footer Payload string */}
-        <div className="pt-0.5 text-[8px] font-mono text-slate-800 flex items-center justify-between">
-          <span className="truncate max-w-[65mm]">Payload: {tag.qrPayload}</span>
-          <span className="font-bold shrink-0">NMBD - SUNHOUSE</span>
+        <div
+          className="tag-card-footer"
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            fontSize: '7.5px',
+            fontFamily: 'monospace',
+            color: '#000',
+            paddingTop: '1px',
+            height: '3.5mm',
+            boxSizing: 'border-box',
+          }}
+        >
+          <span
+            style={{
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              maxWidth: '65mm',
+            }}
+          >
+            Payload: {tag.qrPayload}
+          </span>
+          <span style={{ fontWeight: 'bold', flexShrink: 0 }}>
+            NMBD - SUNHOUSE
+          </span>
         </div>
       </div>
     );

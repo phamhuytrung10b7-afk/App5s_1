@@ -52,6 +52,7 @@ export const KittingView: React.FC<KittingViewProps> = ({
   const [qrInputText, setQrInputText] = useState('');
   const [scannedTag, setScannedTag] = useState<MasterKittingTag | null>(null);
   const [masterTags, setMasterTags] = useState<MasterKittingTag[]>([]);
+  const [isAutoKittingModalOpen, setIsAutoKittingModalOpen] = useState(false);
 
   // Smart Kitting Form Fields
   const [partCode, setPartCode] = useState('');
@@ -184,6 +185,9 @@ export const KittingView: React.FC<KittingViewProps> = ({
     const matchingBuf = buffers.find((b) => b.partCode === tag.partCode && b.status !== 'EMPTY');
     const emptyBuf = buffers.find((b) => b.status === 'EMPTY');
     setTargetBuffer(matchingBuf ? matchingBuf.locationId : emptyBuf ? emptyBuf.locationId : 'BUFFER-A1-01');
+
+    // Automatically open popup modal for Kitting Info
+    setIsAutoKittingModalOpen(true);
   };
 
   // Parse Raw QR Code payload [Mã_Linh_Kiện]|[Số_Lượng_Định_Mức]|[Mã_Nhóm]
@@ -259,6 +263,7 @@ export const KittingView: React.FC<KittingViewProps> = ({
         setPartName(`Linh kiện ${cleanStr}`);
         setStandardQty(0);
         setActualQty(0);
+        setIsAutoKittingModalOpen(true);
       }
     }
   };
@@ -279,6 +284,7 @@ export const KittingView: React.FC<KittingViewProps> = ({
     const matchingBuf = buffers.find((b) => b.partCode === item.partCode && b.status !== 'EMPTY');
     const emptyBuf = buffers.find((b) => b.status === 'EMPTY');
     setTargetBuffer(matchingBuf ? matchingBuf.locationId : emptyBuf ? emptyBuf.locationId : 'BUFFER-A1-01');
+    setIsAutoKittingModalOpen(true);
   };
 
   // Execution & Strict Queue Validation for Smart Kitting
@@ -671,264 +677,65 @@ export const KittingView: React.FC<KittingViewProps> = ({
               </div>
             </div>
 
-            {/* Step 2: Auto-filled Kitting Form */}
-            <form onSubmit={handleFormSubmit} className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 space-y-6 shadow-xs">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-blue-100 text-blue-800 rounded-xl">
-                    <Scissors className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-extrabold text-base text-slate-900">
-                      THÔNG TIN BÓC TÁCH KITTING TỰ ĐỘNG
-                    </h4>
-                    <p className="text-xs text-slate-500">
-                      Tự động điền từ QR code Thẻ Thùng. Nhập số lượng thực tế cần kitting.
-                    </p>
-                  </div>
+            {/* Step 2: Clean Guidance & Buffer Racks Overview (Replaces redundant inline form) */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+              <div className="flex items-center space-x-3 pb-3 border-b border-slate-100">
+                <div className="p-2.5 bg-blue-100 text-blue-800 rounded-2xl">
+                  <Sparkles className="w-5 h-5 text-blue-700 animate-pulse" />
                 </div>
-
-                {groupName && (
-                  <div
-                    className="px-4 py-1.5 rounded-full font-black text-xs shadow-xs flex items-center space-x-1.5"
-                    style={{
-                      backgroundColor: groupColorHex,
-                      color: getPartGroupConfig(groupName).textColorHex,
-                    }}
-                  >
-                    <span>●</span>
-                    <span>NHÓM: {groupName.toUpperCase()}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Form Input Fields Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    MÃ LINH KIỆN (AUTO-FILL)
-                  </label>
-                  <input
-                    type="text"
-                    value={partCode}
-                    onChange={(e) => setPartCode(e.target.value)}
-                    required
-                    placeholder="Mã linh kiện..."
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-extrabold text-blue-800 focus:bg-white text-sm outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    TÊN LINH KIỆN
-                  </label>
-                  <input
-                    type="text"
-                    value={partName}
-                    onChange={(e) => setPartName(e.target.value)}
-                    required
-                    placeholder="Tên linh kiện..."
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-extrabold text-slate-900 focus:bg-white text-sm outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    QUY CÁCH CCDC
-                  </label>
-                  <input
-                    type="text"
-                    value={ccdcSpec}
-                    onChange={(e) => setCcdcSpec(e.target.value)}
-                    placeholder="Quy cách CCDC..."
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-semibold text-slate-700 focus:bg-white text-sm outline-hidden"
-                  />
-                </div>
-
-                {/* QUANTITY & OVERRIDE SECTION */}
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    ĐỊNH MỨC TIÊU CHUẨN (STANDARD QTY)
-                  </label>
-                  <input
-                    type="text"
-                    value={standardQty > 0 ? `${standardQty} ${unit}` : 'Đang để trống trong Excel'}
-                    readOnly
-                    className={`w-full px-3.5 py-2.5 border rounded-xl font-mono font-black text-sm cursor-not-allowed ${
-                      standardQty > 0
-                        ? 'bg-slate-100 border-slate-300 text-amber-800'
-                        : 'bg-rose-50 border-rose-200 text-rose-700'
-                    }`}
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1">Định mức mã hóa trong tem QR Thẻ Thùng.</p>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block font-extrabold text-blue-900">
-                      SỐ LƯỢNG BÓC TÁCH (NHẬP SỐ LƯỢNG THỰC TẾ) <span className="text-rose-500">*</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setIsOverride(!isOverride)}
-                      className="text-[10px] font-bold text-amber-700 hover:underline cursor-pointer"
-                    >
-                      {isOverride ? 'Khôi phục định mức' : 'Ghi đè ngoại lệ'}
-                    </button>
-                  </div>
-                  <input
-                    type="number"
-                    min={1}
-                    value={actualQty === 0 ? '' : actualQty}
-                    onChange={(e) => {
-                      const val = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
-                      setActualQty(val);
-                      if (val !== standardQty) {
-                        setIsOverride(true);
-                      } else {
-                        setIsOverride(false);
-                      }
-                    }}
-                    placeholder="Bắt buộc nhập số lượng..."
-                    required
-                    className={`w-full px-3.5 py-2.5 border rounded-xl font-mono font-black text-base outline-hidden focus:ring-2 ${
-                      actualQty === 0
-                        ? 'bg-rose-50 border-rose-400 text-rose-900 focus:ring-rose-500'
-                        : isQtyDifference
-                        ? 'bg-amber-50 border-amber-400 text-amber-900 focus:ring-amber-500'
-                        : 'bg-emerald-50 border-emerald-300 text-emerald-900 focus:ring-emerald-500'
-                    }`}
-                  />
-                  <p className="text-[10px] text-slate-500 mt-1">
-                    {actualQty === 0 ? (
-                      <span className="text-rose-600 font-extrabold">
-                        ⚠️ Thẻ chưa có định mức sẵn. Hãy nhập số lượng thực tế tại đây!
-                      </span>
-                    ) : isQtyDifference ? (
-                      <span className="text-amber-700 font-extrabold">
-                        ⚠️ Đã sửa tay khác định mức ({actualQty - standardQty} {unit})
-                      </span>
-                    ) : (
-                      'Bằng số lượng tiêu chuẩn định mức'
-                    )}
+                  <h4 className="font-extrabold text-sm sm:text-base text-slate-900">
+                    HƯỚNG DẪN BÓC TÁCH KITTING TỰ ĐỘNG
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    Quét Mã QR Thẻ Thùng ở khung quét trên. Bảng Popup [Phiếu Bóc Tách Kitting] sẽ tự động hiển thị để bạn kiểm tra & chọn Kệ Outbuffer.
                   </p>
                 </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    ĐƠN VỊ TÍNH (ĐVT)
-                  </label>
-                  <input
-                    type="text"
-                    value={unit}
-                    onChange={(e) => setUnit(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-800 text-sm outline-hidden"
-                  />
-                </div>
               </div>
 
-              {/* EXCEPTION REASON */}
-              {isQtyDifference && (
-                <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl space-y-3 animate-in fade-in">
-                  <div className="flex items-center space-x-2 text-amber-900 font-extrabold text-xs">
-                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
-                    <span>CẢNH BÁO: SỐ LƯỢNG BÓC TÁCH LẺ SO VỚI QUY CHUẨN TIÊU CHUẨN!</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div>
-                      <label className="block font-bold text-amber-900 mb-1">
-                        CHỌN NHANH LÝ DO NGOẠI LỆ (EXCEPTION REASON):
-                      </label>
-                      <select
-                        value={exceptionReason}
-                        onChange={(e) => setExceptionReason(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl font-bold text-slate-900 focus:ring-2 focus:ring-amber-500 outline-hidden"
+              {/* Status Indicator & Quick Buffer Racks Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                  <span className="font-extrabold text-slate-700 block uppercase text-[10px]">
+                    📍 TRẠNG THÁI KỆ OUTBUFFER ({buffers.filter((b) => b.status === 'EMPTY').length} Kệ Trống)
+                  </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {buffers.slice(0, 6).map((b) => (
+                      <div
+                        key={b.locationId}
+                        className={`p-2 rounded-xl border text-center font-mono font-bold text-[11px] ${
+                          b.status === 'EMPTY'
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                            : 'bg-amber-50 border-amber-300 text-amber-900'
+                        }`}
                       >
-                        <option value="Thùng thô dư lẻ (Thiếu từ NCC)">Thùng thô dư lẻ (Thiếu hàng từ NCC)</option>
-                        <option value="Hàng hỏng / móp vỡ trong bóc tách">Hàng hỏng / móp vỡ trong bóc tách</option>
-                        <option value="Chẻ thùng cấp dở dở theo lệnh">Chẻ thùng cấp dở dở theo lệnh</option>
-                        <option value="Yêu cầu bổ sung đặc biệt">Yêu cầu bổ sung đặc biệt</option>
-                        <option value="Khác">Lý do khác</option>
-                      </select>
-                    </div>
-
-                    <div className="bg-white p-3 rounded-xl border border-amber-200 text-amber-900 font-semibold text-[11px] flex items-center justify-between">
-                      <span>Chênh lệch so với chuẩn:</span>
-                      <strong className="font-mono font-black text-sm text-amber-800">
-                        {actualQty - standardQty > 0 ? `+${actualQty - standardQty}` : actualQty - standardQty} {unit}
-                      </strong>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* OUTBUFFER SCANNING & LOGGED IN USER OPERATOR */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-2 border-t border-slate-100">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    NHÂN VIÊN BÓC TÁCH (THEO TÀI KHOẢN ĐĂNG NHẬP)
-                  </label>
-                  <div className="flex items-center space-x-2 px-3.5 py-2.5 bg-slate-100 border border-slate-300 rounded-xl font-extrabold text-slate-800 text-sm">
-                    <User className="w-4 h-4 text-blue-700 shrink-0" />
-                    <span className="truncate">{operator}</span>
-                    <span className="ml-auto text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold shrink-0">
-                      Đang đăng nhập
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block font-bold text-blue-900">
-                      📍 QUÉT MÃ KỆ OUTBUFFER
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setIsBufferQrScanning(!isBufferQrScanning)}
-                      className="text-[10px] text-blue-700 font-bold hover:underline cursor-pointer"
-                    >
-                      {isBufferQrScanning ? 'Ẩn Quét' : 'Quét Camera QR Kệ'}
-                    </button>
-                  </div>
-
-                  {isBufferQrScanning && (
-                    <div className="p-2 bg-slate-900 rounded-xl mb-2">
-                      <InlineQrScanner
-                        onScanSuccess={handleScanBufferQrSuccess}
-                        placeholderText="Quét QR trên Kệ OUTBUFFER (Tự động xác nhận)..."
-                      />
-                    </div>
-                  )}
-
-                  <select
-                    value={targetBuffer}
-                    onChange={(e) => setTargetBuffer(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-blue-50 border border-blue-300 rounded-xl font-extrabold text-blue-900 text-sm outline-hidden cursor-pointer"
-                  >
-                    {buffers.map((b) => (
-                      <option key={b.locationId} value={b.locationId}>
                         📍 {b.locationId}
-                      </option>
+                        <span className="block text-[9px] font-sans font-normal opacity-80">
+                          {b.status === 'EMPTY' ? 'Trống' : b.partCode}
+                        </span>
+                      </div>
                     ))}
-                  </select>
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Quét QR Kệ sẽ tự động xác nhận bóc tách. Nếu chọn thủ công từ danh sách thì bấm nút bên dưới.
+                  </div>
+                </div>
+
+                <div className="p-4 bg-blue-50/60 border border-blue-200 rounded-2xl space-y-2">
+                  <span className="font-extrabold text-blue-900 block uppercase text-[10px]">
+                    📦 DANH SÁCH CHỜ BÓC TÁCH TỪ KHO THÔ ({rawPendingItems.length} Lô Chờ)
+                  </span>
+                  <p className="text-slate-600 leading-relaxed text-[11px]">
+                    Tất cả linh kiện đã xuất Kho Thô sẽ nằm trong <strong>Danh Sách Chờ Bóc Tách</strong>. Khi quét Thẻ Thùng, hệ thống sẽ tự động đối soát và trừ lùi FIFO.
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('pending')}
+                    className="mt-1 px-3.5 py-2 bg-blue-800 hover:bg-blue-900 text-white rounded-xl font-bold text-xs inline-flex items-center space-x-1.5 cursor-pointer shadow-2xs"
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Xem Chi Tiết Danh Sách Chờ ({groupedPendingList.length} Mã)</span>
+                  </button>
                 </div>
               </div>
-
-              {/* Submit Button */}
-              <div className="flex items-center justify-end space-x-3 pt-2">
-                <button
-                  type="submit"
-                  className="w-full sm:w-auto px-8 py-3 bg-blue-800 hover:bg-blue-900 text-white rounded-2xl font-black text-sm shadow-md transition-all cursor-pointer flex items-center justify-center space-x-2"
-                >
-                  <Check className="w-5 h-5 text-amber-300" />
-                  <span>XÁC NHẬN HOÀN TẤT BÓC TÁCH & ĐẨY LÊN KỆ OUTBUFFER</span>
-                </button>
-              </div>
-            </form>
+            </div>
           </div>
         )}
 
@@ -1171,6 +978,190 @@ export const KittingView: React.FC<KittingViewProps> = ({
                   {resultModal.isSuccess ? '✓ OK - ĐÃ XÁC NHẬN' : 'ĐÓNG & KIỂM TRA LẠI'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AUTO KITTING INFORMATION POPUP MODAL */}
+      {isAutoKittingModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border-2 border-blue-600 my-8 space-y-5 relative">
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setIsAutoKittingModalOpen(false)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 bg-slate-100 rounded-full cursor-pointer transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Header */}
+            <div className="flex items-center space-x-3 pb-3 border-b border-slate-200">
+              <div className="p-3 bg-blue-100 text-blue-800 rounded-2xl">
+                <Sparkles className="w-6 h-6 text-blue-700 animate-pulse" />
+              </div>
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full inline-block">
+                  ⚡ THÔNG TIN BÓC TÁCH KITTING TỰ ĐỘNG
+                </span>
+                <h2 className="text-lg sm:text-xl font-black text-slate-900">
+                  [SUNHOUSE] PHIẾU BÓC TÁCH KITTING
+                </h2>
+              </div>
+            </div>
+
+            {/* Tag info badge & status check */}
+            <div className="p-4 rounded-2xl border border-slate-200 space-y-3 bg-slate-50">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center space-x-2">
+                  <span
+                    className="px-3 py-1 rounded-lg text-xs font-black text-white shadow-2xs"
+                    style={{ backgroundColor: groupColorHex || '#3182CE' }}
+                  >
+                    {groupName}
+                  </span>
+                  <span className="font-mono font-black text-xs px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-slate-900">
+                    {scannedTag?.stt ? (scannedTag.stt.toLowerCase().includes('số') ? scannedTag.stt : `Số ${scannedTag.stt}`) : 'Số 1'}
+                  </span>
+                </div>
+
+                {/* Pending queue availability check */}
+                {(() => {
+                  const pendingForPart = rawPendingItems.filter(
+                    (i) => i.partCode.trim().toLowerCase() === partCode.trim().toLowerCase()
+                  );
+                  const totalPending = pendingForPart.reduce((sum, i) => sum + i.rawQuantity, 0);
+                  const isAvailable = totalPending >= (actualQty || 1);
+
+                  return (
+                    <div className="flex items-center space-x-2 text-xs">
+                      <span className="font-bold text-slate-600">SL Chờ bóc tách từ Kho Thô:</span>
+                      <span
+                        className={`font-mono font-black px-2.5 py-0.5 rounded-full ${
+                          isAvailable
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            : 'bg-rose-100 text-rose-800 border border-rose-300'
+                        }`}
+                      >
+                        {totalPending} {unit}
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Info Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
+                <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Mã Linh Kiện</span>
+                  <span className="font-mono font-black text-blue-700 text-sm block truncate">{partCode}</span>
+                </div>
+                <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Tên Linh Kiện</span>
+                  <span className="font-extrabold text-slate-900 text-xs block truncate">{partName}</span>
+                </div>
+                <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Quy Cách CCDC</span>
+                  <span className="font-bold text-slate-800 text-xs block">{ccdcSpec || '0'}</span>
+                </div>
+                <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Định Mức Quy Chuẩn</span>
+                  <span className="font-mono font-extrabold text-amber-900 text-xs block">{standardQty} {unit}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Inputs for Actual Qty & Buffer location */}
+            <div className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">
+                    SỐ LƯỢNG THỰC BÓC TÁCH ({unit}) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={actualQty}
+                    onChange={(e) => setActualQty(Number(e.target.value))}
+                    className="w-full px-3.5 py-2.5 bg-amber-50 border-2 border-amber-300 rounded-xl font-black text-amber-900 text-base focus:ring-2 focus:ring-amber-500 outline-hidden"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    * Pre-fill theo định mức chuẩn ({standardQty} {unit}).
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">
+                    📍 VỊ TRÍ KỆ OUTBUFFER LẤY / CẤP <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={targetBuffer}
+                    onChange={(e) => setTargetBuffer(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-blue-50 border-2 border-blue-300 rounded-xl font-extrabold text-blue-900 text-sm outline-hidden cursor-pointer"
+                  >
+                    {buffers.map((b) => (
+                      <option key={b.locationId} value={b.locationId}>
+                        📍 {b.locationId} {b.partCode ? `(Đã có ${b.partCode})` : '(Kệ trống)'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Operator display */}
+              <div className="p-3 bg-slate-100 rounded-xl flex items-center justify-between text-xs">
+                <div className="flex items-center space-x-2">
+                  <User className="w-4 h-4 text-blue-700 shrink-0" />
+                  <span className="text-slate-600 font-bold">Người bóc tách:</span>
+                  <strong className="text-slate-900 font-extrabold">{operator}</strong>
+                </div>
+                <span className="text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold">
+                  Tài khoản đăng nhập
+                </span>
+              </div>
+
+              {/* Exception Reason selector if actualQty !== standardQty */}
+              {actualQty !== standardQty && (
+                <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-2">
+                  <label className="block font-bold text-amber-900 text-xs">
+                    ⚠️ LÝ DO LỆCH ĐỊNH MỨC ({actualQty - standardQty > 0 ? `+${actualQty - standardQty}` : actualQty - standardQty} {unit}):
+                  </label>
+                  <select
+                    value={exceptionReason}
+                    onChange={(e) => setExceptionReason(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl font-bold text-slate-900 text-xs"
+                  >
+                    <option value="Thùng thô dư lẻ (Thiếu từ NCC)">Thùng thô dư lẻ (Thiếu hàng từ NCC)</option>
+                    <option value="Hàng hỏng / móp vỡ trong bóc tách">Hàng hỏng / móp vỡ trong bóc tách</option>
+                    <option value="Chẻ thùng cấp dở dở theo lệnh">Chẻ thùng cấp dở dở theo lệnh</option>
+                    <option value="Yêu cầu bổ sung đặc biệt">Yêu cầu bổ sung đặc biệt</option>
+                    <option value="Khác">Lý do khác</option>
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setIsAutoKittingModalOpen(false)}
+                className="w-full sm:w-auto px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                HỦY / ĐÓNG
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  executeSmartKitting();
+                  setIsAutoKittingModalOpen(false);
+                }}
+                className="w-full sm:w-auto px-6 py-3 bg-blue-800 hover:bg-blue-900 text-white rounded-xl font-black text-xs shadow-md transition-all cursor-pointer flex items-center justify-center space-x-2"
+              >
+                <Check className="w-4 h-4 text-amber-300" />
+                <span>XÁC NHẬN BÓC TÁCH & ĐƯA VÀO BUFFER</span>
+              </button>
             </div>
           </div>
         </div>

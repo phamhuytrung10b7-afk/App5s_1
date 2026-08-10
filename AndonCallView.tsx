@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { MaterialCallRequest, BufferLocationMap, AppSettings, Part, ViewTab } from './types';
 import { storageService } from './storage';
 import { SearchableSelect, SelectOption } from './SearchableSelect';
+import { InlineQrScanner } from './InlineQrScanner';
+import { ContainerTagManagerModal } from './ContainerTagManagerModal';
+import { MasterKittingTag } from './masterExcelParser';
 import {
   Bell,
   BellRing,
@@ -22,6 +25,11 @@ import {
   Settings as SettingsIcon,
   Plus,
   Trash2,
+  QrCode,
+  Tag,
+  X,
+  Sparkles,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface AndonCallViewProps {
@@ -73,16 +81,186 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
         'Khu Kiểm Thử Quality Check 4',
       ];
 
-  // Request form state
-  const [assemblyLine, setAssemblyLine] = useState(assemblyLinesList[0] || 'Bàn Lắp Ráp Bo Mạch Line 1');
+  // Current logged in user
+  const currentUser = storageService.getCurrentUser();
+  const defaultRequester = currentUser
+    ? `${currentUser.fullName} (${currentUser.roleTitle || currentUser.username})`
+    : (settings.staffList && settings.staffList[0]) || 'Nguyễn Văn A (Trưởng Dây Chuyền 1)';
+
+  // Request form state - Default assemblyLine to 'DCLR', default requestedBy to logged in user
+  const [assemblyLine, setAssemblyLine] = useState('DCLR');
+  const [isCustomLineMode, setIsCustomLineMode] = useState(false);
   const [isManageLinesModalOpen, setIsManageLinesModalOpen] = useState(false);
   const [newLineInput, setNewLineInput] = useState('');
 
   const [selectedPartCode, setSelectedPartCode] = useState('');
   const [requestedQty, setRequestedQty] = useState<number>(10);
-  const [requestedBy, setRequestedBy] = useState(
-    (settings.staffList && settings.staffList[0]) || 'Nguyễn Văn A (Trưởng Dây Chuyền 1)'
-  );
+  const [requestedBy, setRequestedBy] = useState(defaultRequester);
+
+  // QR Code scanning states for Phiếu Thông Tin / Thẻ Thùng
+  const [isAndonCameraScanning, setIsAndonCameraScanning] = useState(false);
+  const [andonQrInputText, setAndonQrInputText] = useState('');
+  const [isAndonTagManagerOpen, setIsAndonTagManagerOpen] = useState(false);
+  const [andonScanMessage, setAndonScanMessage] = useState('');
+
+  // Selected pick shelf for Andon call (FIFO recommended or user-selected)
+  const [selectedPickShelf, setSelectedPickShelf] = useState<string>('');
+
+  // State for Andon Scan Popup Modal & Error Modal
+  const [andonModalData, setAndonModalData] = useState<{
+    isOpen: boolean;
+    partCode: string;
+    partName: string;
+    unit: string;
+    standardQty: number;
+    isKitted: boolean;
+    recommendedLocation: string;
+    availableShelves: string[];
+    availableBuffers: BufferLocationMap[];
+    kittedStockQty: number;
+    pendingRawQty: number;
+    statusText: string;
+    locationGuideText: string;
+  } | null>(null);
+
+  const [andonErrorModal, setAndonErrorModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+  } | null>(null);
+
+  const [showManualForm, setShowManualForm] = useState(false);
+
+  useEffect(() => {
+    if (currentUser) {
+      setRequestedBy(`${currentUser.fullName} (${currentUser.roleTitle || currentUser.username})`);
+    }
+  }, [currentUser]);
+
+  // Handle parsing QR code from Phiếu Thông Tin / Thẻ Thùng for Andon Call
+  const handleParseAndonQrPayload = (payloadStr: string) => {
+    if (!payloadStr) return;
+    const cleanStr = payloadStr.trim();
+    const masterTags = storageService.getMasterContainerTags();
+    const kittingQueue = storageService.getKittingQueue();
+    const pendingKittingItems = kittingQueue.filter((k) => k.status === 'PENDING_KITTING');
+
+    let pCode = '';
+    let pName = '';
+    let pQty = 10;
+    let pUnit = 'Cái';
+
+    // 1. Match in Master Container Tags
+    const matchedMaster = masterTags.find(
+      (m) =>
+        (m.qrPayload && m.qrPayload.trim().toLowerCase() === cleanStr.toLowerCase()) ||
+        (m.partCode && m.partCode.trim().toLowerCase() === cleanStr.toLowerCase())
+    );
+
+    if (matchedMaster) {
+      pCode = matchedMaster.partCode;
+      pName = matchedMaster.partName || matchedMaster.partCode;
+      pQty = matchedMaster.standardQty && matchedMaster.standardQty > 0 ? matchedMaster.standardQty : 10;
+      pUnit = matchedMaster.unit || 'Cái';
+    } else if (cleanStr.includes('|')) {
+      // Pipe format e.g. "04-29-09-SHA76214CKNK-0001|1000|01" or "CONT_IN|LK01|100|..."
+      const parts = cleanStr.split('|');
+      pCode = parts[0] || '';
+      pQty = parts[1] && !isNaN(parseFloat(parts[1])) ? parseFloat(parts[1]) : 10;
+      if (cleanStr.startsWith('CONT_IN|')) {
+        pCode = parts[1] || '';
+        pQty = parts[2] && !isNaN(parseFloat(parts[2])) ? parseFloat(parts[2]) : 10;
+      }
+      const matchInMaster = masterTags.find((m) => m.partCode.toLowerCase() === pCode.toLowerCase());
+      const matchInPending = pendingKittingItems.find((p) => p.partCode.toLowerCase() === pCode.toLowerCase());
+      if (matchInMaster) {
+        pName = matchInMaster.partName;
+        pUnit = matchInMaster.unit || 'Cái';
+      } else if (matchInPending) {
+        pName = matchInPending.partName;
+        pUnit = matchInPending.unit || 'Cái';
+      } else {
+        pName = pCode;
+      }
+    } else {
+      pCode = cleanStr;
+      const matchInMaster = masterTags.find((m) => m.partCode.toLowerCase() === pCode.toLowerCase());
+      const matchInPending = pendingKittingItems.find((p) => p.partCode.toLowerCase() === pCode.toLowerCase());
+      if (matchInMaster) {
+        pName = matchInMaster.partName;
+        pQty = matchInMaster.standardQty > 0 ? matchInMaster.standardQty : 10;
+        pUnit = matchInMaster.unit || 'Cái';
+      } else if (matchInPending) {
+        pName = matchInPending.partName;
+        pQty = matchInPending.rawQuantity > 0 ? matchInPending.rawQuantity : 10;
+        pUnit = matchInPending.unit || 'Cái';
+      } else {
+        pName = pCode;
+      }
+    }
+
+    // Validation: Part MUST either exist on Outbuffer OR in Pending Kitting queue
+    const bufferEntry = bufferPartsMap.get(pCode.trim());
+    const pendingItemsForCode = pendingKittingItems.filter((k) => k.partCode.trim().toLowerCase() === pCode.trim().toLowerCase());
+    const isPendingInQueue = pendingItemsForCode.length > 0;
+
+    if (!bufferEntry && !isPendingInQueue) {
+      setAndonErrorModal({
+        isOpen: true,
+        title: '⚠️ LỖI BÓC TÁCH & GỌI HÀNG (ANDON)',
+        message: `Mã linh kiện [${pCode}] KHÔNG TỒN TẠI trong Danh Sách Chờ Bóc Tách từ Kho Thô hay trên Kệ Outbuffer! Vui lòng làm thủ tục xuất kho thô từ Kho Tổng trước khi phát tín hiệu gọi cấp hàng.`,
+      });
+      return;
+    }
+
+    // Determine Kitting status & location recommendation
+    let isKitted = false;
+    let recLocation = 'DCLR';
+    let availableShelves: string[] = [];
+    let stockOnBuffer = 0;
+    let pendingRawQty = 0;
+    let statusText = '';
+    let locationGuideText = '';
+
+    if (bufferEntry && bufferEntry.totalBufferStock > 0 && bufferEntry.availableBuffers.length > 0) {
+      isKitted = true;
+      stockOnBuffer = bufferEntry.totalBufferStock;
+      availableShelves = bufferEntry.availableBuffers.map((b) => b.locationId);
+      recLocation = availableShelves[0]; // FIFO shelf recommendation
+      setSelectedPickShelf(recLocation);
+      statusText = `🟢 ĐÃ KITTING (Sẵn sàng trên Kệ Outbuffer)`;
+      locationGuideText = `📍 Linh kiện ĐÃ KITTING. Có ${bufferEntry.availableBuffers.length} kệ chứa linh kiện này. Kệ gợi ý FIFO: ${recLocation} (Tồn kệ: ${stockOnBuffer} ${pUnit})`;
+    } else {
+      isKitted = false;
+      recLocation = 'DCLR';
+      setSelectedPickShelf('DCLR');
+      pendingRawQty = pendingItemsForCode.reduce((sum, i) => sum + i.rawQuantity, 0);
+      statusText = `🟡 CHƯA KITTING (Nằm trong Danh Sách Chờ Bóc Tách từ Kho Thô)`;
+      locationGuideText = `🚚 Linh kiện CHƯA KITTING lên Kệ Outbuffer. Giao trực tiếp qua DCLR (Cấp trực tiếp từ Kho Thô)`;
+    }
+
+    // Auto update selected part code & values
+    setSelectedPartCode(pCode);
+    setRequestedQty(pQty);
+    setAssemblyLine(assemblyLinesList[0] || 'DCLR');
+
+    // Open Andon Scan Modal
+    setAndonModalData({
+      isOpen: true,
+      partCode: pCode,
+      partName: pName,
+      unit: pUnit,
+      standardQty: pQty,
+      isKitted,
+      recommendedLocation: recLocation,
+      availableShelves,
+      availableBuffers: bufferEntry ? bufferEntry.availableBuffers : [],
+      kittedStockQty: stockOnBuffer,
+      pendingRawQty,
+      statusText,
+      locationGuideText,
+    });
+  };
 
   // Logistics deliver modal / confirm state
   const [delivererName, setDelivererName] = useState(
@@ -145,6 +323,15 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
     }
   });
 
+  // Sort each part's available buffers by FIFO (oldest lastUpdated first)
+  bufferPartsMap.forEach((entry) => {
+    entry.availableBuffers.sort((a, b) => {
+      const timeA = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
+      const timeB = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
+      return timeA - timeB;
+    });
+  });
+
   // Prepare searchable options for SearchableSelect
   // Rule: ONLY allow parts that are either on Outbuffer shelves OR in Pending Kitting list (đã xuất kho thô)
   const partSelectOptions: SelectOption[] = Array.from(bufferPartsMap.values()).map((p) => {
@@ -174,7 +361,7 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
   // Automatically select first available part if none selected
   useEffect(() => {
     if (partSelectOptions.length > 0) {
-      if (!selectedPartCode || !partSelectOptions.some((o) => o.value === selectedPartCode)) {
+      if (!selectedPartCode) {
         setSelectedPartCode(partSelectOptions[0].value);
       }
     } else {
@@ -196,17 +383,15 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
   let partName = '';
   let unit = 'PCS';
   let isDirectKitting = false;
+  let availableBuffersForPart: BufferLocationMap[] = [];
 
   if (chosenBufferInfo && chosenBufferInfo.availableBuffers.length > 0) {
-    // Sort by age (FIFO oldest shelf first)
-    const sortedBuffers = [...chosenBufferInfo.availableBuffers].sort(
-      (a, b) => new Date(a.lastUpdated).getTime() - new Date(b.lastUpdated).getTime()
-    );
-    const bestBuffer = sortedBuffers[0];
-    targetBufferLocation = bestBuffer.locationId;
-    availableQtyOnShelf = bestBuffer.currentStockQty;
-    partName = bestBuffer.partName || chosenBufferInfo.partName;
-    unit = bestBuffer.unit || chosenBufferInfo.unit;
+    availableBuffersForPart = chosenBufferInfo.availableBuffers;
+    const selectedBufObj = availableBuffersForPart.find((b) => b.locationId === selectedPickShelf) || availableBuffersForPart[0];
+    targetBufferLocation = selectedBufObj.locationId;
+    availableQtyOnShelf = selectedBufObj.currentStockQty;
+    partName = selectedBufObj.partName || chosenBufferInfo.partName;
+    unit = selectedBufObj.unit || chosenBufferInfo.unit;
     isDirectKitting = false;
   } else {
     // Part is in Pending Kitting list
@@ -285,6 +470,80 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Lỗi khi tạo tín hiệu Andon' });
     }
+  };
+
+  const handleConfirmAndonFromModal = () => {
+    if (!andonModalData) return;
+    const { partCode, partName, unit, isKitted, recommendedLocation, availableBuffers, kittedStockQty, pendingRawQty } = andonModalData;
+    const targetLine = assemblyLine || 'DCLR';
+    const chosenPickLocation = isKitted ? (selectedPickShelf || recommendedLocation) : 'KHU BÓC TÁCH KITTING';
+
+    // Stock validation against actual available quantity on chosen shelf
+    const chosenBuf = availableBuffers.find((b) => b.locationId === chosenPickLocation);
+    const availableQty = chosenBuf ? chosenBuf.currentStockQty : kittedStockQty;
+
+    if (isKitted) {
+      if (requestedQty > availableQty && availableQty > 0) {
+        setMessage({
+          type: 'error',
+          text: `Số lượng yêu cầu (${requestedQty}) vượt quá tồn kho khả dụng trên Kệ ${chosenPickLocation} (${availableQty} ${unit})! Không thể phát tín hiệu gọi quá số lượng.`,
+        });
+        setAndonModalData(null);
+        return;
+      }
+    } else {
+      if (requestedQty > pendingRawQty && pendingRawQty > 0) {
+        setMessage({
+          type: 'error',
+          text: `Số lượng yêu cầu (${requestedQty}) vượt quá số lượng khả dụng trong Danh Sách Chờ Bóc Tách (${pendingRawQty} ${unit})! Không thể phát tín hiệu gọi quá số lượng.`,
+        });
+        setAndonModalData(null);
+        return;
+      }
+    }
+
+    try {
+      storageService.createMaterialCallRequest({
+        assemblyLine: targetLine,
+        partCode: partCode,
+        partName: partName || partCode,
+        unit: unit || 'Cái',
+        requestedQty: requestedQty,
+        bufferLocation: chosenPickLocation,
+        isDirectKitting: !isKitted,
+        requestedBy: requestedBy,
+      });
+
+      // Sound notification chime
+      try {
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.5);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.5);
+      } catch {
+        // Fallback
+      }
+
+      setMessage({
+        type: 'success',
+        text: `🚀 Đã phát tín hiệu ANDON gọi mã linh kiện [${partCode}] thành công tới bộ phận Logistics! Vị trí giao: ${targetLine}`,
+      });
+
+      onRefresh();
+      setActiveTab('logistics');
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Lỗi khi tạo tín hiệu Andon' });
+    }
+
+    setAndonModalData(null);
   };
 
   const handleStartDelivery = (requestId: string) => {
@@ -600,13 +859,28 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
                           </p>
                         </div>
                       ) : (
-                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs space-y-1">
-                          <span className="font-extrabold text-blue-900 block uppercase text-[10px]">LỘ TRÌNH LẤY HÀNG OUTBUFFER:</span>
-                          <p className="font-bold text-slate-800 text-[11px]">
-                            1. Đến Kệ <strong className="text-blue-700 font-mono font-black">[{req.bufferLocation}]</strong> lấy <strong className="text-emerald-700 font-extrabold">[{req.requestedQty} {req.unit}]</strong> <br />
-                            2. Giao tới <strong className="text-slate-900 font-bold">[{req.assemblyLine}]</strong>
-                          </p>
-                        </div>
+                        (() => {
+                          const shelfBuf = buffers.find((b) => b.locationId === req.bufferLocation);
+                          return (
+                            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs space-y-1">
+                              <span className="font-extrabold text-blue-900 block uppercase text-[10px]">LỘ TRÌNH LẤY HÀNG OUTBUFFER:</span>
+                              <p className="font-bold text-slate-800 text-[11px]">
+                                1. Đến Kệ <strong className="text-blue-700 font-mono font-black">[{req.bufferLocation}]</strong>
+                                {shelfBuf?.modelName && (
+                                  <span className="ml-1 text-blue-900 font-extrabold">
+                                    [Model: {shelfBuf.modelName}]
+                                  </span>
+                                )}
+                                {shelfBuf?.description && (
+                                  <span className="ml-1 text-slate-600 font-medium">
+                                    ({shelfBuf.description})
+                                  </span>
+                                )} lấy <strong className="text-emerald-700 font-extrabold">[{req.requestedQty} {req.unit}]</strong> <br />
+                                2. Giao tới <strong className="text-slate-900 font-bold">[{req.assemblyLine}]</strong>
+                              </p>
+                            </div>
+                          );
+                        })()
                       )}
 
                       <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-100">
@@ -716,177 +990,351 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
             </div>
 
             <form onSubmit={handleCreateCallRequest} className="p-6 bg-white border border-slate-200 rounded-3xl space-y-4 text-xs text-slate-800 shadow-xs">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block font-bold text-slate-800">
-                    1. Dây Chuyền / Bàn Máy Yêu Cầu Cấp Hàng <span className="text-rose-500">*</span>
+              {/* QUÉT MÃ QR PHIẾU THÔNG TIN / THẺ THÙNG (TỰ ĐỘNG LẤY TÊN, MÃ, SỐ LƯỢNG QUY CÁCH) */}
+              <div className="p-4 bg-blue-50/80 border-2 border-blue-200 rounded-2xl space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="font-extrabold text-blue-900 text-xs flex items-center space-x-2">
+                    <QrCode className="w-4 h-4 text-blue-700 animate-pulse shrink-0" />
+                    <span>QUÉT MÃ QR PHIẾU THÔNG TIN / THẺ THÙNG (TỰ ĐỘNG CẤP TÊN, MÃ, SL QUY CÁCH)</span>
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => setIsManageLinesModalOpen(true)}
-                    className="text-[11px] font-bold text-amber-700 hover:text-amber-900 underline flex items-center space-x-1 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Thêm / Quản lý vị trí</span>
-                  </button>
-                </div>
-                <select
-                  value={assemblyLine}
-                  onChange={(e) => setAssemblyLine(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-900 text-sm focus:ring-2 focus:ring-amber-500 cursor-pointer"
-                >
-                  {assemblyLinesList.map((line) => (
-                    <option key={line} value={line}>
-                      {line}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Searchable Select Part Code & Name */}
-              <div>
-                <label className="block font-bold text-slate-800 mb-1">
-                  2. Chọn Mã & Tên Linh Kiện Cần Gọi (Chỉ gọi linh kiện trong Danh Sách Chờ Bóc Tách hoặc Kệ Outbuffer) <span className="text-rose-500">*</span>
-                </label>
-                {partSelectOptions.length === 0 ? (
-                  <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl text-xs text-amber-900 space-y-2">
-                    <p className="font-extrabold flex items-center space-x-2 text-sm text-amber-950">
-                      <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
-                      <span>Chưa Có Linh Kiện Nào Được Xuất Kho Thô Hoặc Tồn Kệ Outbuffer</span>
-                    </p>
-                    <p className="text-slate-700 leading-relaxed font-medium">
-                      Theo quy trình sản xuất, chỉ những linh kiện <strong>đã được xuất kho thô (nằm trong Danh Sách Chờ Bóc Tách)</strong> hoặc <strong>đã có sẵn trên kệ Outbuffer</strong> mới được phép phát tín hiệu gọi cấp hàng.
-                    </p>
-                    <p className="text-amber-900 font-bold italic">
-                      👉 Vui lòng tạo phiếu Xuất Kho Thô từ Kho Tổng trước!
-                    </p>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsAndonCameraScanning(!isAndonCameraScanning)}
+                      className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold shadow-2xs flex items-center space-x-1 cursor-pointer"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>{isAndonCameraScanning ? 'Ẩn Camera' : 'Quét Camera QR'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsAndonTagManagerOpen(true)}
+                      className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-lg text-[11px] font-bold shadow-2xs flex items-center space-x-1 cursor-pointer"
+                    >
+                      <Tag className="w-3.5 h-3.5" />
+                      <span>Chọn Từ Danh Sách Thẻ</span>
+                    </button>
                   </div>
-                ) : (
-                  <SearchableSelect
-                    options={partSelectOptions}
-                    value={selectedPartCode}
-                    onChange={(val) => {
-                      setSelectedPartCode(val);
-                      const info = bufferPartsMap.get(val);
-                      if (info && info.availableBuffers.length > 0) {
-                        setRequestedQty(Math.min(10, info.availableBuffers[0].currentStockQty));
+                </div>
+
+                {isAndonCameraScanning && (
+                  <div className="p-2 bg-slate-900 rounded-xl">
+                    <InlineQrScanner
+                      onScanSuccess={(code) => {
+                        handleParseAndonQrPayload(code);
+                        setIsAndonCameraScanning(false);
+                      }}
+                      placeholderText="Đưa súng quét hoặc Camera tới mã QR Phiếu Thông Tin..."
+                    />
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={andonQrInputText}
+                    onChange={(e) => setAndonQrInputText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleParseAndonQrPayload(andonQrInputText);
+                        setAndonQrInputText('');
                       }
                     }}
-                    placeholder="Gõ mã hoặc tên linh kiện để tìm kiếm..."
-                    required
-                    allowCustom={false}
-                    icon={<Search className="w-4 h-4" />}
+                    placeholder="Quét hoặc dán chuỗi QR code Phiếu Thông Tin / Thẻ Thùng..."
+                    className="flex-1 px-3.5 py-2 bg-white border border-blue-300 rounded-xl font-mono text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-500 outline-hidden"
                   />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleParseAndonQrPayload(andonQrInputText);
+                      setAndonQrInputText('');
+                    }}
+                    className="px-4 py-2 bg-blue-800 hover:bg-blue-900 text-white rounded-xl font-extrabold text-xs cursor-pointer shadow-2xs"
+                  >
+                    Xác Nhận Quét
+                  </button>
+                </div>
+
+                {andonScanMessage && (
+                  <div className="p-2.5 bg-emerald-100 border border-emerald-300 rounded-xl text-emerald-950 font-bold text-xs flex items-center justify-between">
+                    <span>{andonScanMessage}</span>
+                    <button
+                      type="button"
+                      onClick={() => setAndonScanMessage('')}
+                      className="text-emerald-800 hover:underline text-[10px] font-extrabold"
+                    >
+                      Đóng
+                    </button>
+                  </div>
                 )}
               </div>
 
-              {/* Auto-detected Buffer Shelf / Direct Kitting Information Box */}
-              {selectedPartCode && (
-                isDirectKitting ? (
-                  <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl text-xs space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-extrabold text-amber-900 flex items-center space-x-1.5">
-                        <Package className="w-4 h-4 text-amber-600" />
-                        <span>Trạng Thái Outbuffer:</span>
-                      </span>
-                      <span className="font-extrabold text-[11px] px-3 py-1 bg-amber-500 text-slate-950 rounded-xl shadow-xs uppercase">
-                        📦 CHƯA CÓ TRÊN KỆ OUTBUFFER
-                      </span>
-                    </div>
-                    <p className="text-slate-800 font-bold">
-                      Tên LK: <strong className="text-slate-900">{partName || selectedPartCode}</strong>
-                    </p>
-                    <div className="p-3 bg-amber-100/90 border border-amber-200 rounded-xl text-amber-950 space-y-1">
-                      <p className="flex items-center space-x-1.5 font-extrabold text-amber-900 text-xs">
-                        <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
-                        <span>Quy Trình: Bóc Tách Kitting & Giao Thẳng (Cross-Docking)</span>
-                      </p>
-                      <p className="text-[11px] text-amber-900 leading-relaxed font-medium">
-                        Linh kiện chưa sẵn sàng trên kệ Outbuffer. Tín hiệu bấm gọi này sẽ thông báo cho bộ phận Logistics <strong>thực hiện Bóc Tách tại Khu Kitting và giao TRỰC TIẾP tới {assemblyLine}</strong> mà không gợi ý vị trí kệ lấy ảo!
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-extrabold text-emerald-900 flex items-center space-x-1.5">
-                        <MapPin className="w-4 h-4 text-emerald-600" />
-                        <span>Vị Trí Kệ Outbuffer Lấy Hàng (FIFO):</span>
-                      </span>
-                      <span className="font-mono font-black text-xs px-3 py-1 bg-emerald-700 text-white rounded-xl shadow-xs">
-                        📍 {targetBufferLocation}
-                      </span>
-                    </div>
-                    <p className="text-slate-800 font-bold">
-                      Tên LK: <strong className="text-slate-900">{partName || selectedPartCode}</strong>
-                    </p>
-                    <p className="text-emerald-800 font-bold flex items-center space-x-1">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <span>Có sẵn trên kệ Outbuffer: {availableQtyOnShelf} {unit}</span>
-                    </p>
-                  </div>
-                )
-              )}
-
-              {/* Requested Quantity */}
-              <div>
-                <label className="block font-bold text-slate-800 mb-1">
-                  3. Số Lượng Cần Gọi ({unit}) <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  value={requestedQty}
-                  onChange={(e) => setRequestedQty(Number(e.target.value))}
-                  required
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl font-black text-amber-800 text-sm focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-
-              {/* Requester Select with link to Settings */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block font-bold text-slate-800">
-                    4. Người Yêu Cầu <span className="text-rose-500">*</span>
-                  </label>
-                  {onNavigateToSettings && (
-                    <button
-                      type="button"
-                      onClick={onNavigateToSettings}
-                      className="text-[11px] font-bold text-amber-700 hover:text-amber-900 underline flex items-center space-x-1 cursor-pointer"
-                    >
-                      <SettingsIcon className="w-3 h-3" />
-                      <span>Chỉnh sửa danh sách trong Cài Đặt</span>
-                    </button>
-                  )}
-                </div>
-                <select
-                  value={requestedBy}
-                  onChange={(e) => setRequestedBy(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl font-semibold text-slate-900 text-sm focus:ring-2 focus:ring-amber-500"
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => setShowManualForm(!showManualForm)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs rounded-xl transition-all cursor-pointer inline-flex items-center space-x-2 border border-slate-300 shadow-2xs"
                 >
-                  {settings.staffList && settings.staffList.length > 0 ? (
-                    settings.staffList.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))
-                  ) : (
-                    <option value="Nguyễn Văn A (Trưởng Dây Chuyền 1)">Nguyễn Văn A (Trưởng Dây Chuyền 1)</option>
-                  )}
-                </select>
-                <p className="text-[10px] text-slate-400 mt-1 italic">
-                  * Danh sách người yêu cầu có thể chỉnh sửa/thêm bớt trong mục Cài đặt & Dữ liệu.
-                </p>
+                  <SettingsIcon className="w-4 h-4 text-amber-700" />
+                  <span>{showManualForm ? 'Ẩn Form Chọn Linh Kiện Thủ Công' : '📋 Hiện Form Chọn Linh Kiện Thủ Công (Không Quét QR)'}</span>
+                </button>
               </div>
 
-              <button
-                type="submit"
-                className="w-full py-3 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-2xl shadow-md transition-all cursor-pointer flex items-center justify-center space-x-2 text-sm mt-4"
-              >
-                <BellRing className="w-5 h-5 animate-bounce" />
-                <span>GỬI YÊU CẦU CẤP HÀNG (ANDON SIGNAL)</span>
-              </button>
+              {showManualForm && (
+                <div className="space-y-4 pt-2 border-t border-slate-200 animate-in fade-in">
+                  {/* 1. Dây Chuyền / Bàn Máy Yêu Cầu Cấp Hàng - Default DCLR */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block font-bold text-slate-800">
+                        1. Dây Chuyền / Bàn Máy Yêu Cầu Cấp Hàng <span className="text-rose-500">*</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setIsCustomLineMode(!isCustomLineMode)}
+                        className="text-[11px] font-bold text-amber-700 hover:text-amber-900 underline flex items-center space-x-1 cursor-pointer"
+                      >
+                        <SettingsIcon className="w-3.5 h-3.5" />
+                        <span>{isCustomLineMode ? 'Mặc Định DCLR' : 'Sửa Chi Tiết Vị Trí'}</span>
+                      </button>
+                    </div>
+
+                    {isCustomLineMode ? (
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={assemblyLine}
+                          onChange={(e) => setAssemblyLine(e.target.value)}
+                          placeholder="Nhập thủ công vị trí / bàn máy / dây chuyền..."
+                          className="w-full px-3.5 py-2.5 bg-white border-2 border-amber-400 rounded-xl font-extrabold text-slate-900 text-sm focus:ring-2 focus:ring-amber-500 outline-hidden"
+                        />
+                        <div className="flex flex-wrap gap-1.5 items-center">
+                          <span className="text-[10px] text-slate-500 font-bold">Chọn nhanh:</span>
+                          <button
+                            type="button"
+                            onClick={() => setAssemblyLine('DCLR')}
+                            className="px-2 py-0.5 bg-slate-100 hover:bg-amber-100 border border-slate-300 rounded text-[11px] font-bold cursor-pointer"
+                          >
+                            DCLR (Ghi chung)
+                          </button>
+                          {assemblyLinesList.map((line) => (
+                            <button
+                              key={line}
+                              type="button"
+                              onClick={() => setAssemblyLine(line)}
+                              className="px-2 py-0.5 bg-slate-100 hover:bg-amber-100 border border-slate-300 rounded text-[11px] font-bold cursor-pointer"
+                            >
+                              {line}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="text"
+                          value={assemblyLine}
+                          onChange={(e) => setAssemblyLine(e.target.value)}
+                          className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-extrabold text-amber-900 text-sm focus:ring-2 focus:ring-amber-500 outline-hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setIsCustomLineMode(true)}
+                          className="px-3.5 py-2.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-xl text-xs font-extrabold shrink-0 cursor-pointer"
+                        >
+                          ✏️ Sửa Chi Tiết
+                        </button>
+                      </div>
+                    )}
+                    <p className="text-[10px] text-slate-400 mt-1 italic">
+                      * Mặc định là DCLR. Bấm "Sửa Chi Tiết" nếu muốn ghi thủ công tên bàn máy / dây chuyền cụ thể.
+                    </p>
+                  </div>
+
+                  {/* Searchable Select Part Code & Name */}
+                  <div>
+                    <label className="block font-bold text-slate-800 mb-1">
+                      2. Chọn Mã & Tên Linh Kiện Cần Gọi (Chỉ gọi linh kiện trong Danh Sách Chờ Bóc Tách hoặc Kệ Outbuffer) <span className="text-rose-500">*</span>
+                    </label>
+                    {partSelectOptions.length === 0 ? (
+                      <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl text-xs text-amber-900 space-y-2">
+                        <p className="font-extrabold flex items-center space-x-2 text-sm text-amber-950">
+                          <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                          <span>Chưa Có Linh Kiện Nào Được Xuất Kho Thô Hoặc Tồn Kệ Outbuffer</span>
+                        </p>
+                        <p className="text-slate-700 leading-relaxed font-medium">
+                          Theo quy trình sản xuất, chỉ những linh kiện <strong>đã được xuất kho thô (nằm trong Danh Sách Chờ Bóc Tách)</strong> hoặc <strong>đã có sẵn trên kệ Outbuffer</strong> mới được phép phát tín hiệu gọi cấp hàng.
+                        </p>
+                        <p className="text-amber-900 font-bold italic">
+                          👉 Vui lòng tạo phiếu Xuất Kho Thô từ Kho Tổng trước!
+                        </p>
+                      </div>
+                    ) : (
+                      <SearchableSelect
+                        options={partSelectOptions}
+                        value={selectedPartCode}
+                        onChange={(val) => {
+                          setSelectedPartCode(val);
+                          const info = bufferPartsMap.get(val);
+                          if (info && info.availableBuffers.length > 0) {
+                            setRequestedQty(Math.min(10, info.availableBuffers[0].currentStockQty));
+                          }
+                        }}
+                        placeholder="Gõ mã hoặc tên linh kiện để tìm kiếm..."
+                        required
+                        allowCustom={false}
+                        icon={<Search className="w-4 h-4" />}
+                      />
+                    )}
+                  </div>
+
+                  {/* Auto-detected Buffer Shelf / Direct Kitting Information Box */}
+                  {selectedPartCode && (
+                    isDirectKitting ? (
+                      <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl text-xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-amber-900 flex items-center space-x-1.5">
+                            <Package className="w-4 h-4 text-amber-600" />
+                            <span>Trạng Thái Outbuffer:</span>
+                          </span>
+                          <span className="font-extrabold text-[11px] px-3 py-1 bg-amber-500 text-slate-950 rounded-xl shadow-xs uppercase">
+                            📦 CHƯA CÓ TRÊN KỆ OUTBUFFER
+                          </span>
+                        </div>
+                        <p className="text-slate-800 font-bold">
+                          Tên LK: <strong className="text-slate-900">{partName || selectedPartCode}</strong>
+                        </p>
+                        <div className="p-3 bg-amber-100/90 border border-amber-200 rounded-xl text-amber-950 space-y-1">
+                          <p className="flex items-center space-x-1.5 font-extrabold text-amber-900 text-xs">
+                            <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+                            <span>Quy Trình: Bóc Tách Kitting & Giao Thẳng (Cross-Docking)</span>
+                          </p>
+                          <p className="text-[11px] text-amber-900 leading-relaxed font-medium">
+                            Linh kiện chưa sẵn sàng trên kệ Outbuffer. Tín hiệu bấm gọi này sẽ thông báo cho bộ phận Logistics <strong>thực hiện Bóc Tách tại Khu Kitting và giao TRỰC TIẾP tới {assemblyLine}</strong> mà không gợi ý vị trí kệ lấy ảo!
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs space-y-3">
+                        <div className="space-y-1.5">
+                          <label className="block font-extrabold text-emerald-950">
+                            Chọn Kệ Outbuffer Lấy Hàng (Ưu tiên FIFO):
+                          </label>
+                          <select
+                            value={targetBufferLocation}
+                            onChange={(e) => setSelectedPickShelf(e.target.value)}
+                            className="w-full px-3.5 py-2.5 bg-white border border-emerald-300 rounded-xl font-bold text-slate-900 text-xs focus:ring-2 focus:ring-emerald-500 shadow-xs"
+                          >
+                            {availableBuffersForPart.map((b, idx) => (
+                              <option key={b.locationId} value={b.locationId}>
+                                [{b.locationId}] {b.modelName ? ` • Model: ${b.modelName}` : ''} {b.description ? ` (${b.description})` : ''} — Tồn: {b.currentStockQty} {unit} {idx === 0 ? ' ⭐ (Ưu tiên FIFO)' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {(() => {
+                          const curBuf = availableBuffersForPart.find((b) => b.locationId === targetBufferLocation) || availableBuffersForPart[0];
+                          if (!curBuf) return null;
+                          return (
+                            <div className="p-3 bg-white border border-emerald-200/80 rounded-xl space-y-1.5 text-xs shadow-xs">
+                              <div className="flex items-center justify-between font-bold">
+                                <span className="flex items-center space-x-1.5 text-slate-900">
+                                  <MapPin className="w-4 h-4 text-emerald-600" />
+                                  <span>Kệ Đang Chọn: <strong className="font-mono text-emerald-800 font-extrabold">{curBuf.locationId}</strong></span>
+                                </span>
+                                {curBuf.locationId === availableBuffersForPart[0]?.locationId && (
+                                  <span className="px-2 py-0.5 bg-emerald-700 text-white text-[10px] font-black rounded-md uppercase">
+                                    ⭐ Hàng xuất trước (FIFO)
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-2 text-[11px] pt-1">
+                                {curBuf.modelName ? (
+                                  <span className="px-2.5 py-1 bg-blue-50 text-blue-900 border border-blue-200 rounded-lg font-extrabold flex items-center space-x-1">
+                                    <Tag className="w-3.5 h-3.5 text-blue-600" />
+                                    <span>Model Kệ: <strong>{curBuf.modelName}</strong></span>
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md font-semibold italic border border-slate-200">
+                                    Chưa gán Model
+                                  </span>
+                                )}
+
+                                {curBuf.description && (
+                                  <span className="px-2.5 py-1 bg-slate-50 text-slate-800 border border-slate-200 rounded-lg font-bold">
+                                    📍 Mô tả vị trí: <strong>{curBuf.description}</strong>
+                                  </span>
+                                )}
+
+                                <span className="px-2.5 py-1 bg-emerald-100 text-emerald-950 border border-emerald-300 rounded-lg font-extrabold">
+                                  📦 Tồn khả dụng: <strong>{curBuf.currentStockQty} {unit}</strong>
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )
+                  )}
+
+                  {/* Requested Quantity */}
+                  <div>
+                    <label className="block font-bold text-slate-800 mb-1">
+                      3. Số Lượng Cần Gọi ({unit}) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={requestedQty}
+                      onChange={(e) => setRequestedQty(Number(e.target.value))}
+                      required
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl font-black text-amber-800 text-sm focus:ring-2 focus:ring-amber-500 outline-hidden"
+                    />
+                  </div>
+
+                  {/* Requester Select - Default to Logged in User */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block font-bold text-slate-800">
+                        4. Người Yêu Cầu <span className="text-rose-500">*</span>
+                      </label>
+                      {currentUser && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setRequestedBy(`${currentUser.fullName} (${currentUser.roleTitle || currentUser.username})`)
+                          }
+                          className="text-[11px] font-extrabold text-blue-700 hover:underline flex items-center space-x-1 cursor-pointer"
+                        >
+                          <User className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Đặt theo User Đăng Nhập</span>
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      value={requestedBy}
+                      onChange={(e) => setRequestedBy(e.target.value)}
+                      required
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-900 text-sm focus:ring-2 focus:ring-amber-500 outline-hidden"
+                      placeholder="Tên người yêu cầu..."
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1 italic">
+                      * Mặc định theo tài khoản người dùng đang đăng nhập: <strong className="text-slate-700">{defaultRequester}</strong>
+                    </p>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-3 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-2xl shadow-md transition-all cursor-pointer flex items-center justify-center space-x-2 text-sm mt-4"
+                  >
+                    <BellRing className="w-5 h-5 animate-bounce" />
+                    <span>GỬI YÊU CẦU CẤP HÀNG (ANDON SIGNAL)</span>
+                  </button>
+                </div>
+              )}
             </form>
           </div>
         )}
@@ -1033,6 +1481,242 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Andon Scan Confirmation Popup Modal */}
+      {andonModalData && andonModalData.isOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-5 relative">
+            <button
+              type="button"
+              onClick={() => setAndonModalData(null)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center space-x-3 border-b border-slate-100 pb-4">
+              <div className="p-3 bg-amber-100 text-amber-900 rounded-2xl">
+                <Bell className="w-6 h-6 text-amber-700 animate-bounce" />
+              </div>
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full inline-block">
+                  ⚡ POPUP PHIẾU GỌI LINH KIỆN TỰ ĐỘNG (ANDON SIGNAL)
+                </span>
+                <h2 className="text-lg sm:text-xl font-black text-slate-900">
+                  [SUNHOUSE] YÊU CẦU CẤP LINH KIỆN CHO DÂY CHUYỀN
+                </h2>
+              </div>
+            </div>
+
+            {/* Scanned Tag & Kitting Status info card */}
+            <div className="p-4 rounded-2xl border border-slate-200 space-y-3 bg-slate-50">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-mono font-black text-xs px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-blue-900">
+                  MÃ LINH KIỆN: {andonModalData.partCode}
+                </span>
+
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-black border ${
+                    andonModalData.isKitted
+                      ? 'bg-emerald-100 text-emerald-950 border-emerald-300'
+                      : 'bg-amber-100 text-amber-950 border-amber-300'
+                  }`}
+                >
+                  {andonModalData.statusText}
+                </span>
+              </div>
+
+              <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1 text-xs">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Tên Linh Kiện</span>
+                <span className="font-extrabold text-slate-900 text-sm block">{andonModalData.partName}</span>
+              </div>
+
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl space-y-1 text-xs text-blue-900 font-bold">
+                <span>{andonModalData.locationGuideText}</span>
+              </div>
+            </div>
+
+            {/* Inputs in Modal */}
+            <div className="space-y-4 text-xs">
+              {/* Requested Qty & Destination Line */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">
+                    SỐ LƯỢNG YÊU CẦU CẤP ({andonModalData.unit}) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={requestedQty}
+                    onChange={(e) => setRequestedQty(Number(e.target.value))}
+                    className="w-full px-3.5 py-2.5 bg-amber-50 border-2 border-amber-300 rounded-xl font-black text-amber-900 text-base focus:ring-2 focus:ring-amber-500 outline-hidden"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    * Tự động nhận diện từ quy cách Thẻ Thùng ({andonModalData.standardQty} {andonModalData.unit}).
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">
+                    DÂY CHUYỀN / BÀN MÁY NHẬN HÀNG <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={assemblyLine}
+                    onChange={(e) => setAssemblyLine(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-blue-50 border-2 border-blue-300 rounded-xl font-extrabold text-blue-900 text-sm focus:ring-2 focus:ring-blue-500 outline-hidden"
+                  >
+                    {assemblyLinesList.map((line) => (
+                      <option key={line} value={line}>
+                        📍 {line}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    * Mặc định theo bàn máy / dây chuyền yêu cầu ({assemblyLine}).
+                  </p>
+                </div>
+              </div>
+
+              {/* OUTBUFFER PICK SHELF SELECTOR & MODEL DISPLAY */}
+              {andonModalData.isKitted && andonModalData.availableBuffers.length > 0 ? (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                  <div>
+                    <label className="block font-extrabold text-slate-800 mb-1">
+                      CHỌN KỆ OUTBUFFER LẤY HÀNG (ƯU TIÊN FIFO) <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={selectedPickShelf || andonModalData.recommendedLocation}
+                      onChange={(e) => setSelectedPickShelf(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-white border-2 border-emerald-500 rounded-xl font-black text-slate-900 text-sm focus:ring-2 focus:ring-emerald-500 shadow-xs"
+                    >
+                      {andonModalData.availableBuffers.map((b, idx) => (
+                        <option key={b.locationId} value={b.locationId}>
+                          [{b.locationId}] {b.modelName ? ` • Model: ${b.modelName}` : ''} {b.description ? ` (${b.description})` : ''} — Tồn: {b.currentStockQty} {andonModalData.unit} {idx === 0 ? ' ⭐ (Ưu tiên FIFO)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {(() => {
+                    const currentShelfId = selectedPickShelf || andonModalData.recommendedLocation;
+                    const curBuf = andonModalData.availableBuffers.find((b) => b.locationId === currentShelfId) || andonModalData.availableBuffers[0];
+                    if (!curBuf) return null;
+                    return (
+                      <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1.5 text-xs shadow-xs">
+                        <div className="flex items-center justify-between font-bold text-slate-900">
+                          <span className="flex items-center space-x-1.5">
+                            <MapPin className="w-4 h-4 text-emerald-600" />
+                            <span>Kệ Đang Chọn: <strong className="font-mono text-emerald-800 font-black">{curBuf.locationId}</strong></span>
+                          </span>
+                          {curBuf.locationId === andonModalData.recommendedLocation && (
+                            <span className="px-2 py-0.5 bg-emerald-700 text-white text-[10px] font-black rounded-md uppercase">
+                              ⭐ Hàng xuất trước (FIFO)
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] pt-1">
+                          {curBuf.modelName ? (
+                            <span className="px-2.5 py-1 bg-blue-50 text-blue-900 border border-blue-200 rounded-lg font-extrabold flex items-center space-x-1">
+                              <Tag className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Model Kệ: <strong>{curBuf.modelName}</strong></span>
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md font-semibold italic border border-slate-200">
+                              Chưa gán Model
+                            </span>
+                          )}
+
+                          {curBuf.description && (
+                            <span className="px-2.5 py-1 bg-slate-50 text-slate-800 border border-slate-200 rounded-lg font-bold">
+                              📍 Mô tả vị trí: <strong>{curBuf.description}</strong>
+                            </span>
+                          )}
+
+                          <span className="px-2.5 py-1 bg-emerald-100 text-emerald-950 border border-emerald-300 rounded-lg font-extrabold">
+                            📦 Tồn trên kệ này: <strong>{curBuf.currentStockQty} {andonModalData.unit}</strong>
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1 text-amber-950">
+                  <span className="font-extrabold flex items-center space-x-1.5 text-amber-900">
+                    <Truck className="w-4 h-4 text-amber-600" />
+                    <span>Lộ Trình Lấy Hàng: CROSS-DOCKING TỪ KHU BÓC TÁCH KITTING</span>
+                  </span>
+                  <p className="text-[11px] font-medium text-slate-700">
+                    Mã linh kiện chưa có sẵn trên kệ Outbuffer. Tín hiệu bấm gọi này sẽ chuyển yêu cầu tới bộ phận Logistics để bóc tách trực tiếp và giao thẳng tới {assemblyLine}.
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className="block font-bold text-slate-800 mb-1">NGƯỜI YÊU CẦU CẤP HÀNG</label>
+                <div className="flex items-center space-x-2 px-3.5 py-2.5 bg-slate-100 border border-slate-300 rounded-xl font-bold text-slate-900 text-xs">
+                  <User className="w-4 h-4 text-blue-700 shrink-0" />
+                  <span>{requestedBy}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setAndonModalData(null)}
+                className="w-full sm:w-auto px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                HỦY / ĐÓNG
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmAndonFromModal}
+                className="w-full sm:w-auto px-6 py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl font-black text-xs shadow-md transition-all cursor-pointer flex items-center justify-center space-x-2"
+              >
+                <Bell className="w-4 h-4 text-slate-950" />
+                <span>🔔 XÁC NHẬN GỬI YÊU CẦU GỌI HÀNG (ANDON SIGNAL)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Andon Error Modal */}
+      {andonErrorModal && andonErrorModal.isOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border-2 border-rose-300 space-y-4 relative text-center">
+            <div className="w-14 h-14 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-8 h-8" />
+            </div>
+
+            <h3 className="text-base font-black text-rose-900">{andonErrorModal.title}</h3>
+            <p className="text-xs text-slate-700 leading-relaxed font-semibold bg-rose-50 p-3 rounded-2xl border border-rose-200">
+              {andonErrorModal.message}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setAndonErrorModal(null)}
+              className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-extrabold text-xs cursor-pointer shadow-md"
+            >
+              Đã Hiểu / Đóng
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Container Tag Manager Modal for Andon Selection */}
+      <ContainerTagManagerModal
+        isOpen={isAndonTagManagerOpen}
+        onClose={() => setIsAndonTagManagerOpen(false)}
+        onSelectTagForKitting={(tag) => {
+          handleParseAndonQrPayload(tag.qrPayload || tag.partCode);
+          setIsAndonTagManagerOpen(false);
+        }}
+      />
     </div>
   );
 };

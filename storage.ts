@@ -1,5 +1,6 @@
 import { Part, PartLocationStock, Transaction, StockCheckRecord, AppSettings, ContainerBatch, ContainerQrTag, FifoLot, ModelBOM, ModelBOMItem, KittingQueueItem, BufferLocationMap, BufferPartItem, MaterialCallRequest, BomExportVoucher, BomExportVoucherItem, UserAccount, ViewTab } from './types';
 import { initialParts, initialTransactions, initialSettings } from './sampleData';
+import { MasterKittingTag, SAMPLE_MASTER_TAGS } from './masterExcelParser';
 import * as XLSX from 'xlsx';
 
 const PARTS_KEY = 'thekho_parts_v1';
@@ -13,6 +14,7 @@ const KITTING_QUEUE_KEY = 'thekho_kitting_queue_v1';
 const BUFFER_MAP_KEY = 'thekho_buffer_map_v1';
 const MATERIAL_CALLS_KEY = 'thekho_material_calls_v1';
 const BOM_VOUCHERS_KEY = 'thekho_bom_vouchers_v1';
+const MASTER_CONTAINER_TAGS_KEY = 'thekho_master_container_tags_v1';
 
 const DEFAULT_BUFFER_LOCATIONS: BufferLocationMap[] = [
   {
@@ -1948,6 +1950,20 @@ export const storageService = {
     }
   },
 
+  isAdminUser(user?: UserAccount | null): boolean {
+    const target = user !== undefined ? user : this.getCurrentUser();
+    if (!target) return false;
+    const username = (target.username || '').toLowerCase();
+    const roleTitle = (target.roleTitle || '').toLowerCase();
+    return (
+      username === 'admin' ||
+      roleTitle.includes('quản trị') ||
+      roleTitle.includes('admin') ||
+      roleTitle.includes('giám đốc') ||
+      roleTitle.includes('quản lý')
+    );
+  },
+
   login(username: string, password: string): { success: boolean; user?: UserAccount; error?: string } {
     const users = this.getUsers();
     const target = users.find(
@@ -1976,6 +1992,31 @@ export const storageService = {
 
   logout(): void {
     this.setCurrentUser(null);
+  },
+
+  // --- MASTER CONTAINER TAGS (BÓC TÁCH KITTING SMART) ---
+  getMasterContainerTags(): MasterKittingTag[] {
+    const raw = localStorage.getItem(MASTER_CONTAINER_TAGS_KEY);
+    if (!raw) {
+      localStorage.setItem(MASTER_CONTAINER_TAGS_KEY, JSON.stringify(SAMPLE_MASTER_TAGS));
+      return SAMPLE_MASTER_TAGS;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      return SAMPLE_MASTER_TAGS;
+    } catch {
+      return SAMPLE_MASTER_TAGS;
+    }
+  },
+
+  saveMasterContainerTags(tags: MasterKittingTag[]): void {
+    localStorage.setItem(MASTER_CONTAINER_TAGS_KEY, JSON.stringify(tags));
+  },
+
+  resetMasterContainerTags(): MasterKittingTag[] {
+    localStorage.setItem(MASTER_CONTAINER_TAGS_KEY, JSON.stringify(SAMPLE_MASTER_TAGS));
+    return SAMPLE_MASTER_TAGS;
   },
 };
 

@@ -52,6 +52,7 @@ export const PartsListView: React.FC<PartsListViewProps> = ({
   searchTerm,
   onSearchChange,
 }) => {
+  const isAdmin = storageService.isAdminUser();
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'SAFE' | 'LOW' | 'OUT'>('ALL');
   const [sortBy, setSortBy] = useState<'code' | 'name' | 'currentStock' | 'location'>('code');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -527,13 +528,15 @@ export const PartsListView: React.FC<PartsListViewProps> = ({
                           >
                             <Edit className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => onOpenDeleteModal(p)}
-                            className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors cursor-pointer"
-                            title="Xóa Linh Kiện"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {isAdmin && (
+                            <button
+                              onClick={() => onOpenDeleteModal(p)}
+                              className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors cursor-pointer"
+                              title="Xóa Linh Kiện (Chỉ Quản trị viên)"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

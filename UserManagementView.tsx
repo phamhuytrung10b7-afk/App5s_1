@@ -185,7 +185,13 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({ currentU
     }
   };
 
+  const isAdmin = storageService.isAdminUser(currentUser);
+
   const handleDeleteUser = (u: UserAccount) => {
+    if (!isAdmin) {
+      alert('Chỉ Quản trị viên (ADMIN) mới có quyền xóa tài khoản!');
+      return;
+    }
     if (u.id === currentUser.id) {
       alert('Bạn không thể xóa tài khoản hiện đang đăng nhập của chính mình!');
       return;
@@ -553,12 +559,12 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({ currentU
                       <span>{u.isActive ? 'Khóa' : 'Mở Khóa'}</span>
                     </button>
 
-                    {!isMe && (
+                    {!isMe && isAdmin && (
                       <button
                         type="button"
                         onClick={() => handleDeleteUser(u)}
                         className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                        title="Xóa tài khoản"
+                        title="Xóa tài khoản (Chỉ Quản trị viên)"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>

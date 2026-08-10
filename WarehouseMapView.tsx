@@ -250,8 +250,14 @@ export const WarehouseMapView: React.FC<WarehouseMapViewProps> = ({
     XLSX.writeFile(wb, 'Mau_Khai_Bao_Vi_Tri_Kho.xlsx');
   };
 
+  const isAdmin = storageService.isAdminUser();
+
   // Delete Location Handler
   const handleDeleteLocation = (id: string, name: string) => {
+    if (!isAdmin) {
+      alert('Chỉ tài khoản Quản trị viên (ADMIN) mới có quyền xóa vị trí kho!');
+      return;
+    }
     const partsInLoc = parts.filter((p) => p.location === name);
     if (partsInLoc.length > 0) {
       if (
@@ -567,17 +573,19 @@ export const WarehouseMapView: React.FC<WarehouseMapViewProps> = ({
                           >
                             <QrCode className="w-3.5 h-3.5 text-emerald-600" />
                           </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteLocation(loc.id, loc.name);
-                            }}
-                            className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
-                            title="Xóa vị trí"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteLocation(loc.id, loc.name);
+                              }}
+                              className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
+                              title="Xóa vị trí (Chỉ Quản trị viên)"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
 

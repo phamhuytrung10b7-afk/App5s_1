@@ -229,7 +229,13 @@ export const BufferMapView: React.FC<BufferMapViewProps> = ({ buffers, onRefresh
     }
   };
 
+  const isAdmin = storageService.isAdminUser();
+
   const handleClearShelf = (locationId: string) => {
+    if (!isAdmin) {
+      alert('Chỉ tài khoản Quản trị viên (ADMIN) mới có quyền xóa/dọn kệ!');
+      return;
+    }
     if (window.confirm(`Bạn có chắc muốn dọn trống tất cả linh kiện trên Kệ Buffer ${locationId}?`)) {
       storageService.clearBufferLocation(locationId);
       setMessage({ type: 'success', text: `Đã dọn trống tất cả linh kiện trên kệ ${locationId}` });
@@ -239,6 +245,10 @@ export const BufferMapView: React.FC<BufferMapViewProps> = ({ buffers, onRefresh
   };
 
   const handleDeleteShelf = (locationId: string) => {
+    if (!isAdmin) {
+      alert('Chỉ tài khoản Quản trị viên (ADMIN) mới có quyền xóa kệ!');
+      return;
+    }
     if (!window.confirm(`Bạn có chắc chắn muốn XÓA VĨNH VIỄN Kệ Buffer ${locationId}?`)) return;
     try {
       storageService.deleteBufferLocation(locationId);

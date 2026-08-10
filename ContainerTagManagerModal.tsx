@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MasterKittingTag, parseMasterExcel } from './masterExcelParser';
-import { PART_GROUP_COLORS, PartGroupColorConfig, getPartGroupConfig } from './partGroupColors';
+import { PART_GROUP_COLORS, getPartGroupConfig } from './partGroupColors';
 import { QRCodeSVG } from 'qrcode.react';
 import { printHtml } from './printHelper';
 import { storageService } from './storage';
@@ -23,6 +23,9 @@ import {
   CheckSquare,
   Square,
   Info,
+  Copy,
+  Plus,
+  Minus,
 } from 'lucide-react';
 
 interface ContainerTagManagerModalProps {
@@ -42,6 +45,10 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>('ALL');
   const [activeTab, setActiveTab] = useState<'master_data' | 'color_config' | 'print_preview'>('master_data');
   const [addedMsg, setAddedMsg] = useState<string | null>(null);
+
+  // Custom print quantities per tag ID (default 1)
+  const [printQuantities, setPrintQuantities] = useState<Record<string, number>>({});
+  const [bulkQtyInput, setBulkQtyInput] = useState<number>(1);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const printContainerRef = useRef<HTMLDivElement>(null);
@@ -111,6 +118,22 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
     setSelectedTagIds(next);
   };
 
+  const getTagPrintQty = (id: string) => printQuantities[id] ?? 1;
+
+  const handleSetTagPrintQty = (id: string, qty: number) => {
+    const val = Math.max(1, Math.min(99, qty));
+    setPrintQuantities((prev) => ({ ...prev, [id]: val }));
+  };
+
+  const handleApplyBulkQty = () => {
+    if (bulkQtyInput < 1) return;
+    const next = { ...printQuantities };
+    selectedTagIds.forEach((id) => {
+      next[id] = bulkQtyInput;
+    });
+    setPrintQuantities(next);
+  };
+
   // Filter tags
   const filteredTags = tags.filter((t) => {
     const matchesSearch =
@@ -128,9 +151,33 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
   // Selected tags for printing
   const tagsToPrint = tags.filter((t) => selectedTagIds.has(t.id));
 
+  // Build expanded list according to custom print quantity per tag
+  const buildExpandedPrintList = (mode: 'ALL' | 'SELECTED') => {
+    const targetList = mode === 'ALL' ? tags : tagsToPrint;
+    const expanded: MasterKittingTag[] = [];
+    targetList.forEach((tag) => {
+      const qty = getTagPrintQty(tag.id);
+      for (let i = 0; i < qty; i++) {
+        expanded.push(tag);
+      }
+    });
+    return expanded;
+  };
+
+  const totalSelectedCopies = tagsToPrint.reduce((sum, tag) => sum + getTagPrintQty(tag.id), 0);
+  const totalAllCopies = tags.reduce((sum, tag) => sum + getTagPrintQty(tag.id), 0);
+
+  // Group expanded tags into A4 sheets (8 cards per page: 2 columns x 4 rows)
+  const expandedSelectedList = buildExpandedPrintList('SELECTED');
+  const CARDS_PER_A4_PAGE = 8;
+  const a4Pages: MasterKittingTag[][] = [];
+  for (let i = 0; i < expandedSelectedList.length; i += CARDS_PER_A4_PAGE) {
+    a4Pages.push(expandedSelectedList.slice(i, i + CARDS_PER_A4_PAGE));
+  }
+
   const handlePrint = (mode: 'ALL' | 'SELECTED') => {
-    const targetTags = mode === 'ALL' ? tags : tagsToPrint;
-    if (targetTags.length === 0) {
+    const expandedList = buildExpandedPrintList(mode);
+    if (expandedList.length === 0) {
       alert('Chưa có Thẻ Thùng nào được chọn để in!');
       return;
     }
@@ -138,21 +185,39 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
     if (printContainerRef.current) {
       const styles = `
         @page {
-          size: 100mm 70mm;
-          margin: 0;
+          size: A4 portrait;
+          margin: 8mm 10mm;
         }
         @media print {
           html, body {
             margin: 0;
             padding: 0;
-            width: 100mm;
-            height: 70mm;
+            width: 210mm;
+            background: #fff;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          .tag-card {
+          .a4-page {
+            width: 190mm;
+            height: 275mm;
+            box-sizing: border-box;
             page-break-after: always;
             break-after: page;
+            display: grid;
+            grid-template-columns: repeat(2, 90mm);
+            grid-template-rows: repeat(4, 60mm);
+            gap: 4mm 8mm;
+            justify-content: center;
+            align-content: start;
+            margin: 0 auto;
+          }
+          .tag-card {
+            width: 90mm !important;
+            height: 60mm !important;
+            box-sizing: border-box !important;
+            border: 1.5px solid #000 !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
         }
         body {
@@ -162,6 +227,146 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
       `;
       printHtml(printContainerRef.current.innerHTML, styles);
     }
+  };
+
+  // Render a single 90mm x 60mm Tag Card based on Photo 4
+  const renderTagCard = (tag: MasterKittingTag, copyIndex?: number) => {
+    const grp = tag.groupConfig;
+    return (
+      <div
+        key={`${tag.id}-${copyIndex ?? 0}`}
+        className="tag-card bg-white border-2 border-black p-1.5 text-black font-sans shadow-xs relative flex flex-col justify-between overflow-hidden"
+        style={{
+          width: '90mm',
+          height: '60mm',
+          boxSizing: 'border-box',
+          pageBreakInside: 'avoid',
+          breakInside: 'avoid',
+        }}
+      >
+        {/* Header Title & STT Box */}
+        <div className="border-b-2 border-black pb-0.5 mb-0.5 flex items-center justify-between">
+          <div className="font-extrabold text-[11px] tracking-tight text-black flex items-center space-x-1">
+            <span>[SUNHOUSE - NMBD] PHIẾU THÔNG TIN</span>
+          </div>
+          <div className="font-black text-[10px] font-mono text-black border border-black px-1.5 py-0.2 bg-white shrink-0">
+            Số {tag.stt || '1'}
+          </div>
+        </div>
+
+        {/* 6-Row Grid Table (Exact layout from Photo 4) */}
+        <table className="w-full border-collapse text-[9.5px] font-sans border border-black text-black leading-snug">
+          <tbody>
+            {/* Row 1: Nhóm | Nhóm tên | NCC | Color Pill */}
+            <tr className="border-b border-black">
+              <td className="border-r border-black px-1 py-0.5 font-bold w-[18%] bg-slate-100">
+                Nhóm
+              </td>
+              <td className="border-r border-black px-1 py-0.5 font-extrabold w-[38%] truncate">
+                {tag.groupName}
+              </td>
+              <td className="border-r border-black px-1 py-0.5 font-bold w-[14%] bg-slate-100">
+                NCC
+              </td>
+              <td className="px-1 py-0.5 w-[30%] text-center align-middle">
+                <div
+                  className="w-full px-1 py-0.5 rounded border border-black font-extrabold text-[9px] text-white flex items-center justify-center shadow-2xs leading-tight"
+                  style={{
+                    backgroundColor: grp.colorHex,
+                    color: grp.textColorHex,
+                  }}
+                >
+                  {grp.name}
+                </div>
+              </td>
+            </tr>
+
+            {/* Row 2: Tên linh kiện | Value | Quy cách CCDC | Value */}
+            <tr className="border-b border-black">
+              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+                Tên linh kiện
+              </td>
+              <td className="border-r border-black px-1 py-0.5 font-black text-[10px] leading-tight">
+                {tag.partName}
+              </td>
+              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+                Quy cách CCDC
+              </td>
+              <td className="px-1 py-0.5 font-extrabold text-[9px]">
+                {tag.ccdcSpec || '0'}
+              </td>
+            </tr>
+
+            {/* Row 3: Mã linh kiện | Value | Ghi chú | Số ...... */}
+            <tr className="border-b border-black">
+              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+                Mã linh kiện
+              </td>
+              <td className="border-r border-black px-1 py-0.5 font-mono font-black text-[10px]">
+                {tag.partCode}
+              </td>
+              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+                Ghi chú
+              </td>
+              <td className="px-1 py-0.5 font-mono text-[9px]">Số ......</td>
+            </tr>
+
+            {/* Row 4: Số lượng | Value | ĐVT | Value */}
+            <tr className="border-b border-black">
+              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+                Số lượng
+              </td>
+              <td className="border-r border-black px-1 py-0.5 font-black text-xs">
+                {tag.standardQty > 0 ? tag.standardQty : ''}
+              </td>
+              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+                ĐVT
+              </td>
+              <td className="px-1 py-0.5 font-bold">{tag.unit || 'cái/bộ'}</td>
+            </tr>
+
+            {/* Row 5: Khối lượng | - | Tần suất | 1h / 1 lần */}
+            <tr className="border-b border-black">
+              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+                Khối lượng
+              </td>
+              <td className="border-r border-black px-1 py-0.5 font-bold">-</td>
+              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+                Tần suất
+              </td>
+              <td className="px-1 py-0.5 font-bold">{tag.mfgFrequency || '1h / 1 lần'}</td>
+            </tr>
+
+            {/* Row 6: Mã vạch QR | QR SVG | Thời gian cần thực | ......(h) */}
+            <tr>
+              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+                Mã vạch QR
+              </td>
+              <td className="border-r border-black px-1 py-0.5 text-center bg-white align-middle">
+                <div className="inline-block p-0.5 bg-white border border-black rounded">
+                  <QRCodeSVG
+                    value={tag.qrPayload}
+                    size={36}
+                    level="M"
+                    includeMargin={false}
+                  />
+                </div>
+              </td>
+              <td className="border-r border-black px-1 py-0.5 font-bold bg-slate-100">
+                Thời gian cần thực
+              </td>
+              <td className="px-1 py-0.5 font-mono text-[9px]">......(h)</td>
+            </tr>
+          </tbody>
+        </table>
+
+        {/* Footer Payload string */}
+        <div className="pt-0.5 text-[8px] font-mono text-slate-800 flex items-center justify-between">
+          <span className="truncate max-w-[65mm]">Payload: {tag.qrPayload}</span>
+          <span className="font-bold shrink-0">NMBD - SUNHOUSE</span>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -183,7 +388,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                 </span>
               </div>
               <p className="text-xs text-blue-200 mt-0.5">
-                Import Excel Master Data, Tự động mã hóa QR Standard <code className="bg-blue-950 px-1 py-0.5 rounded text-amber-300 font-mono">[Mã_VT]|[Định_Mức]|[Mã_Nhóm]</code> & In Thẻ Thùng Nhận Dạng Màu Trực Quan
+                Kích thước thẻ <strong>90mm x 60mm</strong>. Tối ưu xếp <strong>8 thẻ / 1 trang A4</strong>. Cho phép chọn số lượng bản in từng thẻ linh hoạt.
               </p>
             </div>
           </div>
@@ -200,7 +405,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
               }`}
             >
               <Printer className="w-4 h-4" />
-              <span>In {tagsToPrint.length} Thẻ Đã Chọn</span>
+              <span>In {tagsToPrint.length} Thẻ Đã Chọn ({totalSelectedCopies} Bản)</span>
             </button>
 
             <button
@@ -213,7 +418,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
           </div>
         </div>
 
-        {/* Tab Switcher & Filters */}
+        {/* Tab Switcher & Actions Bar */}
         <div className="p-3 bg-slate-100 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
           <div className="flex items-center space-x-2">
             <div className="flex items-center bg-slate-200 p-1 rounded-2xl">
@@ -253,7 +458,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                 }`}
               >
                 <Printer className="w-4 h-4 text-amber-600" />
-                <span>3. Xem Mẫu In "PHIẾU THÔNG TIN"</span>
+                <span>3. Xem Mẫu In "PHIẾU THÔNG TIN" ({totalSelectedCopies} Thẻ)</span>
               </button>
             </div>
           </div>
@@ -302,13 +507,13 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
           </div>
         )}
 
-        {/* Content Tabs Body */}
+        {/* Body Content */}
         <div className="flex-1 overflow-hidden p-4 bg-slate-50">
           {activeTab === 'master_data' ? (
             <div className="h-full flex flex-col space-y-3">
-              {/* Search & Group Filter Bar */}
+              {/* Search & Bulk Quantity Controls */}
               <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
-                <div className="flex items-center space-x-2 flex-1 min-w-[280px]">
+                <div className="flex items-center space-x-2 flex-1 min-w-[260px]">
                   <Search className="w-4 h-4 text-slate-400 shrink-0" />
                   <input
                     type="text"
@@ -319,7 +524,29 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                   />
                 </div>
 
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-3">
+                  {/* Bulk Quantity Setter */}
+                  <div className="flex items-center space-x-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200 text-xs">
+                    <span className="font-bold text-slate-600 text-[11px] pl-1">
+                      Gán SL in cho thẻ đã chọn:
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={bulkQtyInput}
+                      onChange={(e) => setBulkQtyInput(parseInt(e.target.value) || 1)}
+                      className="w-12 px-1.5 py-0.5 bg-white border border-slate-300 rounded font-bold text-center text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyBulkQty}
+                      className="px-2 py-0.5 bg-blue-700 hover:bg-blue-800 text-white rounded font-bold text-[11px] cursor-pointer"
+                    >
+                      Áp Dụng
+                    </button>
+                  </div>
+
                   <span className="text-xs font-bold text-slate-500">Lọc Nhóm:</span>
                   <select
                     value={selectedGroupFilter}
@@ -364,14 +591,16 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                           className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                         />
                       </th>
-                      <th className="p-3 w-16 text-center">STT</th>
+                      <th className="p-3 w-14 text-center">STT</th>
                       <th className="p-3">Nhóm Linh Kiện</th>
-                      <th className="p-3">Mã Màu Hex</th>
                       <th className="p-3">Tên Linh Kiện</th>
                       <th className="p-3 font-mono">Mã Linh Kiện</th>
                       <th className="p-3">Quy Cách CCDC</th>
                       <th className="p-3 text-center">Định Mức (SL/ĐVT)</th>
-                      <th className="p-3">Chuỗi QR Chuẩn (Standard Payload)</th>
+                      <th className="p-3 text-center w-32 bg-amber-50/80 text-amber-900 border-x border-amber-200">
+                        SL Bản In (Thẻ)
+                      </th>
+                      <th className="p-3">Chuỗi QR Standard</th>
                       <th className="p-3 text-center w-28">Thao Tác</th>
                     </tr>
                   </thead>
@@ -379,6 +608,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                     {filteredTags.map((tag) => {
                       const isSelected = selectedTagIds.has(tag.id);
                       const grp = tag.groupConfig;
+                      const printQty = getTagPrintQty(tag.id);
 
                       return (
                         <tr
@@ -409,13 +639,6 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                               <span>{grp.name}</span>
                             </span>
                           </td>
-                          <td className="p-3 font-mono text-[11px] font-bold text-slate-500">
-                            <span
-                              className="inline-block w-3 h-3 rounded-full mr-1.5 align-middle border border-slate-300"
-                              style={{ backgroundColor: grp.colorHex }}
-                            />
-                            {grp.colorHex}
-                          </td>
                           <td className="p-3 font-extrabold text-slate-900">{tag.partName || '-'}</td>
                           <td className="p-3 font-mono font-bold text-blue-700">{tag.partCode || '-'}</td>
                           <td className="p-3 font-medium text-slate-700">{tag.ccdcSpec || ''}</td>
@@ -430,6 +653,37 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                               </span>
                             )}
                           </td>
+
+                          {/* Print Quantity Controls Column */}
+                          <td className="p-2 text-center bg-amber-50/30 border-x border-amber-100" onClick={(e) => e.stopPropagation()}>
+                            <div className="inline-flex items-center space-x-1 bg-white border border-slate-300 rounded-lg p-1 shadow-2xs">
+                              <button
+                                type="button"
+                                onClick={() => handleSetTagPrintQty(tag.id, printQty - 1)}
+                                className="p-1 hover:bg-slate-100 rounded text-slate-600 cursor-pointer"
+                                title="Giảm số lượng in"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <input
+                                type="number"
+                                min={1}
+                                max={99}
+                                value={printQty}
+                                onChange={(e) => handleSetTagPrintQty(tag.id, parseInt(e.target.value) || 1)}
+                                className="w-10 text-center font-black text-xs text-blue-900 outline-hidden"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleSetTagPrintQty(tag.id, printQty + 1)}
+                                className="p-1 hover:bg-slate-100 rounded text-slate-600 cursor-pointer"
+                                title="Tăng số lượng in"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </td>
+
                           <td className="p-3 font-mono text-[10px] text-slate-500">
                             <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded font-bold">
                               {tag.qrPayload}
@@ -536,17 +790,17 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
               </div>
             </div>
           ) : (
-            /* PRINT PREVIEW TAB (CSS PRINT CONTAINER TAG EXACT LAYOUT FROM IMAGE 1) */
+            /* PRINT PREVIEW TAB (8 Cards per A4 Page, 90mm x 60mm Grid) */
             <div className="h-full flex flex-col space-y-3">
-              <div className="p-3 bg-white rounded-2xl border border-slate-200 flex items-center justify-between shrink-0">
+              <div className="p-3 bg-white rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
                 <div className="flex items-center space-x-2">
                   <Printer className="w-5 h-5 text-amber-600" />
                   <div>
                     <h4 className="font-extrabold text-xs text-slate-900">
-                      MẪU IN THẺ THÙNG (CONTAINER TAG) "PHIẾU THÔNG TIN" CHUẨN NHÀ MÁY
+                      XEM TRƯỚC MẪU IN PHIẾU THÔNG TIN (KÍCH THƯỚC 90mm x 60mm, TỐI ƯU 8 THẺ / TRANG A4)
                     </h4>
                     <p className="text-[11px] text-slate-500">
-                      Hiển thị ô màu nhận dạng góc trên bên phải. Kích thước chuẩn nhiệt 100x70mm. Đã chọn {tagsToPrint.length} / {tags.length} thẻ.
+                      Đã chọn {tagsToPrint.length} mã thẻ (Tổng <strong>{totalSelectedCopies} bản in</strong>). Tự động dàn trang xếp 8 thẻ / 1 tờ giấy A4 ({a4Pages.length} trang A4).
                     </p>
                   </div>
                 </div>
@@ -559,7 +813,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                     className="px-4 py-2 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs rounded-xl shadow-md transition-all flex items-center space-x-1.5 cursor-pointer"
                   >
                     <Printer className="w-4 h-4" />
-                    <span>In {tagsToPrint.length} Thẻ Đã Chọn</span>
+                    <span>In {tagsToPrint.length} Mã Thẻ ({totalSelectedCopies} Bản A4)</span>
                   </button>
 
                   <button
@@ -568,151 +822,52 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center space-x-1.5 cursor-pointer"
                   >
                     <Printer className="w-4 h-4" />
-                    <span>In TẤT CẢ ({tags.length} Thẻ)</span>
+                    <span>In TẤT CẢ ({tags.length} Mã - {totalAllCopies} Bản)</span>
                   </button>
                 </div>
               </div>
 
-              {/* Printable Tags Grid / Preview Container */}
-              <div className="flex-1 overflow-y-auto bg-slate-200/70 p-6 rounded-2xl border border-slate-300">
-                <div
-                  ref={printContainerRef}
-                  className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto"
-                >
-                  {tagsToPrint.map((tag, idx) => {
-                    const grp = tag.groupConfig;
-
-                    return (
-                      <div
-                        key={tag.id}
-                        className="tag-card bg-white border-2 border-black p-3 text-black font-sans text-xs shadow-md relative w-full max-w-[100mm] min-h-[68mm] mx-auto flex flex-col justify-between"
-                        style={{ boxSizing: 'border-box' }}
-                      >
-                        {/* Header Title */}
-                        <div className="border-b-2 border-black pb-1 mb-1 flex items-center justify-between">
-                          <div className="font-extrabold text-sm tracking-tight text-black flex items-center space-x-1">
-                            <span>[SUNHOUSE - NMBD] PHIẾU THÔNG TIN</span>
-                          </div>
-                          <div className="font-black text-xs font-mono text-black border border-black px-1.5 py-0.5">
-                            {tag.stt}
-                          </div>
+              {/* Printable Pages Preview Container */}
+              <div className="flex-1 overflow-y-auto bg-slate-200/80 p-6 rounded-2xl border border-slate-300 space-y-8">
+                <div ref={printContainerRef} className="space-y-8">
+                  {a4Pages.length === 0 ? (
+                    <div className="text-center py-12 text-slate-500 font-bold">
+                      Chưa chọn thẻ nào để hiển thị xem trước mẫu in A4!
+                    </div>
+                  ) : (
+                    a4Pages.map((pageCards, pageIdx) => (
+                      <div key={pageIdx} className="max-w-[210mm] mx-auto space-y-2">
+                        {/* A4 Sheet Label Header (Screen Only) */}
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-600 px-2 print:hidden">
+                          <span className="flex items-center space-x-2">
+                            <span className="px-2 py-0.5 bg-blue-900 text-white rounded font-mono text-[11px]">
+                              TRANG A4 #{pageIdx + 1}
+                            </span>
+                            <span>Chứa {pageCards.length} / 8 Thẻ (90mm x 60mm)</span>
+                          </span>
+                          <span className="text-slate-400 text-[11px]">Khổ A4 Portrait (210mm x 297mm)</span>
                         </div>
 
-                        {/* Exact Table Layout from Image 1 */}
-                        <table className="w-full border-collapse text-[11px] font-sans border border-black text-black">
-                          <tbody>
-                            {/* Row 1: Nhóm | Value | NCC | COLOR BOX HEX */}
-                            <tr className="border-b border-black">
-                              <td className="border-r border-black p-1 font-bold w-20 bg-slate-100">
-                                Nhóm
-                              </td>
-                              <td className="border-r border-black p-1 font-extrabold">
-                                {tag.groupName}
-                              </td>
-                              <td className="border-r border-black p-1 font-bold w-12 bg-slate-100">
-                                NCC
-                              </td>
-                              <td className="p-1 w-24 text-center">
-                                {/* VISUAL COLOR CODING BOX EXACT FROM IMAGE 1 */}
-                                <div
-                                  className="w-full h-7 rounded border border-black flex items-center justify-center font-black text-[10px] text-white shadow-xs"
-                                  style={{
-                                    backgroundColor: grp.colorHex,
-                                    color: grp.textColorHex,
-                                  }}
-                                >
-                                  {grp.name}
-                                </div>
-                              </td>
-                            </tr>
-
-                            {/* Row 2: Tên linh kiện | Value | Quy cách CCDC | Value */}
-                            <tr className="border-b border-black">
-                              <td className="border-r border-black p-1 font-bold bg-slate-100">
-                                Tên linh kiện
-                              </td>
-                              <td className="border-r border-black p-1 font-black text-xs">
-                                {tag.partName}
-                              </td>
-                              <td className="border-r border-black p-1 font-bold bg-slate-100">
-                                Quy cách CCDC
-                              </td>
-                              <td className="p-1 font-extrabold text-[10px]">
-                                {tag.ccdcSpec}
-                              </td>
-                            </tr>
-
-                            {/* Row 3: Mã linh kiện | Value | empty | Số ...... */}
-                            <tr className="border-b border-black">
-                              <td className="border-r border-black p-1 font-bold bg-slate-100">
-                                Mã linh kiện
-                              </td>
-                              <td className="border-r border-black p-1 font-mono font-black text-xs">
-                                {tag.partCode}
-                              </td>
-                              <td className="border-r border-black p-1 font-bold bg-slate-100">
-                                Ghi chú
-                              </td>
-                              <td className="p-1 font-mono text-[10px]">Số ......</td>
-                            </tr>
-
-                            {/* Row 4: Số lượng | Value | cái/bộ | empty */}
-                            <tr className="border-b border-black">
-                              <td className="border-r border-black p-1 font-bold bg-slate-100">
-                                Số lượng
-                              </td>
-                              <td className="border-r border-black p-1 font-black text-base text-black">
-                                {tag.standardQty > 0 ? tag.standardQty : ''}
-                              </td>
-                              <td className="border-r border-black p-1 font-bold bg-slate-100">
-                                ĐVT
-                              </td>
-                              <td className="p-1 font-bold">{tag.unit}</td>
-                            </tr>
-
-                            {/* Row 5: Khối lượng | - | Tần suất | 1h / 1 lần */}
-                            <tr className="border-b border-black">
-                              <td className="border-r border-black p-1 font-bold bg-slate-100">
-                                Khối lượng
-                              </td>
-                              <td className="border-r border-black p-1 font-bold">-</td>
-                              <td className="border-r border-black p-1 font-bold bg-slate-100">
-                                Tần suất
-                              </td>
-                              <td className="p-1 font-bold">{tag.mfgFrequency || '1h / 1 lần'}</td>
-                            </tr>
-
-                            {/* Row 6: Mã vạch | QR CODE | Thời gian cần thực | ......(h) */}
-                            <tr>
-                              <td className="border-r border-black p-1 font-bold bg-slate-100">
-                                Mã vạch QR
-                              </td>
-                              <td className="border-r border-black p-1 text-center bg-white">
-                                <div className="inline-block p-1 bg-white border border-black rounded">
-                                  <QRCodeSVG
-                                    value={tag.qrPayload}
-                                    size={55}
-                                    level="M"
-                                    includeMargin={false}
-                                  />
-                                </div>
-                              </td>
-                              <td className="border-r border-black p-1 font-bold bg-slate-100">
-                                Thời gian cần thực
-                              </td>
-                              <td className="p-1 font-mono text-[10px]">......(h)</td>
-                            </tr>
-                          </tbody>
-                        </table>
-
-                        {/* Footer QR Payload String */}
-                        <div className="pt-1 text-[9px] font-mono text-slate-600 flex items-center justify-between">
-                          <span>Payload: {tag.qrPayload}</span>
-                          <span>NMBD - SUNHOUSE</span>
+                        {/* A4 Page Container */}
+                        <div
+                          className="a4-page bg-white p-4 shadow-xl rounded-xl border border-slate-300 mx-auto"
+                          style={{
+                            width: '190mm',
+                            minHeight: '270mm',
+                            boxSizing: 'border-box',
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(2, 90mm)',
+                            gridAutoRows: '60mm',
+                            gap: '4mm 8mm',
+                            justifyContent: 'center',
+                            alignContent: 'start',
+                          }}
+                        >
+                          {pageCards.map((tag, cardIdx) => renderTagCard(tag, pageIdx * 8 + cardIdx))}
                         </div>
                       </div>
-                    );
-                  })}
+                    ))
+                  )}
                 </div>
               </div>
             </div>

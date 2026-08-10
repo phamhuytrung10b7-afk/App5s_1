@@ -908,7 +908,7 @@ export const KittingView: React.FC<KittingViewProps> = ({
                   >
                     {buffers.map((b) => (
                       <option key={b.locationId} value={b.locationId}>
-                        📍 {b.locationId} {b.partCode ? `(Đang chứa: ${b.partCode})` : '(Trống)'}
+                        📍 {b.locationId}
                       </option>
                     ))}
                   </select>

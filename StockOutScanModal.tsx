@@ -63,7 +63,13 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
   const [qty, setQty] = useState<number | ''>(initialQty && initialQty > 0 ? initialQty : '');
   const [scannedLocation, setScannedLocation] = useState<string>('');
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
-  const [person, setPerson] = useState<string>(defaultPerson || settings.staffList?.[0] || 'Thủ kho');
+  // Calculate default person from logged in user
+  const currentUser = storageService.getCurrentUser();
+  const currentUserName = currentUser
+    ? `${currentUser.fullName}${currentUser.roleTitle ? ` (${currentUser.roleTitle})` : ''}`
+    : (defaultPerson || settings.staffList?.[0] || 'Thủ kho');
+
+  const [person, setPerson] = useState<string>(currentUserName);
   const [productionOrder, setProductionOrder] = useState<string>(defaultLSX || settings.productionOrders?.[0] || 'LSX-XUẤT-QUÉT');
   const [purpose, setPurpose] = useState<string>(defaultPurpose || settings.stockOutPurposes?.[0] || 'Sản xuất theo đơn hàng');
   const [notes, setNotes] = useState<string>('Xuất kho bằng quét mã tự động');
@@ -72,9 +78,23 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
   const qtyInputRef = useRef<HTMLInputElement>(null);
   const locationInputRef = useRef<HTMLInputElement>(null);
 
+  const staffOptions = React.useMemo(() => {
+    const list = settings.staffList || [];
+    if (currentUserName && !list.includes(currentUserName)) {
+      return [currentUserName, ...list];
+    }
+    return list.length ? list : [currentUserName];
+  }, [settings.staffList, currentUserName]);
+
   // Sync initial state when modal opens
   useEffect(() => {
     if (isOpen && part) {
+      const user = storageService.getCurrentUser();
+      const userName = user
+        ? `${user.fullName}${user.roleTitle ? ` (${user.roleTitle})` : ''}`
+        : (defaultPerson || settings.staffList?.[0] || 'Thủ kho');
+      setPerson(userName);
+
       setQty(initialQty && initialQty > 0 ? Math.min(initialQty, part.currentStock) : '');
       setScannedLocation('');
       setLocationError(null);
@@ -489,9 +509,9 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
                 onChange={(e) => setPerson(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-800 outline-hidden"
               >
-                {(settings.staffList || []).map((s, idx) => (
+                {staffOptions.map((s, idx) => (
                   <option key={idx} value={s}>
-                    {s}
+                    {s} {s === currentUserName ? ' (Đang đăng nhập)' : ''}
                   </option>
                 ))}
               </select>

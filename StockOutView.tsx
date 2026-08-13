@@ -25,9 +25,22 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
   const [quantity, setQuantity] = useState<number>(10);
   const [dateTime, setDateTime] = useState(getNowLocalDateTime());
 
-  // Default person from settings
-  const defaultPerson = settings.staffList?.[1] || settings.staffList?.[0] || 'Lê Hoàng Nam (Xưởng 1)';
+  // Default person from logged in user
+  const currentUser = storageService.getCurrentUser();
+  const currentUserName = currentUser
+    ? `${currentUser.fullName}${currentUser.roleTitle ? ` (${currentUser.roleTitle})` : ''}`
+    : (settings.staffList?.[0] || 'Lê Hoàng Nam (Xưởng 1)');
+
+  const defaultPerson = currentUserName;
   const [person, setPerson] = useState(defaultPerson);
+
+  const staffOptions = React.useMemo(() => {
+    const list = settings.staffList || [];
+    if (currentUserName && !list.includes(currentUserName)) {
+      return [currentUserName, ...list];
+    }
+    return list.length ? list : [currentUserName];
+  }, [settings.staffList, currentUserName]);
 
   // Default production order from settings
   const defaultLSX = settings.productionOrders?.[0] || 'LSX-2026-HL288';
@@ -431,7 +444,7 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
                       Người Lấy <span className="text-red-500">*</span>
                     </label>
                     <SearchableSelect
-                      options={settings.staffList || []}
+                      options={staffOptions}
                       value={person}
                       onChange={(val) => setPerson(val)}
                       placeholder="Chọn người nhận..."
@@ -991,7 +1004,7 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
           {selectedPart && (
             <div className="col-span-1 md:col-span-2 bg-blue-50/60 p-3.5 rounded-xl border-2 border-blue-300">
               <label className="block text-xs font-extrabold text-blue-950 mb-1 flex items-center justify-between">
-                <span>📍 BẮT BUỘC CHỌN KỆ / VỊ TRÍ XUẤT HÀNG *</span>
+                <span>������ BẮT BUỘC CHỌN KỆ / VỊ TRÍ XUẤT HÀNG *</span>
                 <span className="text-[11px] font-normal text-blue-800">Linh kiện có ở {storageService.getPartLocations(selectedPart).length} vị trí</span>
               </label>
               <select
@@ -1058,7 +1071,7 @@ export const StockOutView: React.FC<StockOutViewProps> = ({ parts, settings, onS
             <SearchableSelect
               label="Người Lấy Linh Kiện / Nhận Hàng"
               required
-              options={settings.staffList || []}
+              options={staffOptions}
               value={person}
               onChange={(val) => setPerson(val)}
               placeholder="Chọn nhân sự hoặc gõ tên mới..."

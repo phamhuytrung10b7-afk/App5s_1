@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Part, AppSettings } from './types';
+import { Part, AppSettings, WarehouseLocation } from './types';
 import { storageService } from './storage';
 import { ArrowDownLeft, CheckCircle2, AlertCircle, Package, Clock, User, FileText, QrCode, FileSpreadsheet, Zap, X, MapPin, Camera } from 'lucide-react';
 import { SearchableSelect, SelectOption } from './SearchableSelect';
@@ -7,6 +7,7 @@ import { QrScannerModal } from './QrScannerModal';
 import { ContainerImportPrintModal } from './ContainerImportPrintModal';
 import { InlineQrScanner } from './InlineQrScanner';
 import { Html5Qrcode } from 'html5-qrcode';
+import { normalizeLocationStr } from './StockOutScanModal';
 
 interface StockInViewProps {
   parts: Part[];
@@ -20,14 +21,89 @@ const getNowLocalDateTime = () => {
   return new Date(now.getTime() - offset).toISOString().slice(0, 16);
 };
 
+// Smart matching function for location QR code scanning
+export function findLocationMatch(
+  scannedText: string,
+  locations: WarehouseLocation[] = []
+): WarehouseLocation | undefined {
+  if (!scannedText || !scannedText.trim()) return undefined;
+
+  let raw = scannedText.trim();
+  if (raw.includes('|')) {
+    const parts = raw.split('|');
+    raw = parts[parts.length - 1].trim();
+  }
+
+  const normScanned = normalizeLocationStr(raw);
+  if (!normScanned) return undefined;
+
+  // 1. Exact case-insensitive match on name or id
+  let found = locations.find(
+    (l) =>
+      l.name.toLowerCase() === raw.toLowerCase() ||
+      l.id.toLowerCase() === raw.toLowerCase()
+  );
+  if (found) return found;
+
+  // 2. Exact match on prefix/short name (e.g. "A01" matching "A01 (Khoang 01 - Tầng 1 - Vị trí 1)")
+  found = locations.find((l) => {
+    const shortName = l.name.split('(')[0].trim();
+    return (
+      shortName.toLowerCase() === raw.toLowerCase() ||
+      normalizeLocationStr(shortName) === normScanned
+    );
+  });
+  if (found) return found;
+
+  // 3. Normalized string match on l.name or l.id
+  found = locations.find(
+    (l) =>
+      normalizeLocationStr(l.name) === normScanned ||
+      normalizeLocationStr(l.id) === normScanned
+  );
+  if (found) return found;
+
+  // 4. Substring / Inclusion match: scanned text contains location name/id, or location name/id contains scanned text
+  found = locations.find((l) => {
+    const normName = normalizeLocationStr(l.name);
+    const normId = normalizeLocationStr(l.id);
+    const shortNameNorm = normalizeLocationStr(l.name.split('(')[0].trim());
+    return (
+      (normName && (normScanned.includes(normName) || normName.includes(normScanned))) ||
+      (shortNameNorm && (normScanned.includes(shortNameNorm) || shortNameNorm.includes(normScanned))) ||
+      (normId && (normScanned.includes(normId) || normId.includes(normScanned)))
+    );
+  });
+  if (found) return found;
+
+  // 5. Match description
+  found = locations.find(
+    (l) => l.description && normalizeLocationStr(l.description) === normScanned
+  );
+  return found;
+}
+
 export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuccess }) => {
   const [selectedPartId, setSelectedPartId] = useState(parts[0]?.id || '');
   const [quantity, setQuantity] = useState<number>(100);
   const [dateTime, setDateTime] = useState(getNowLocalDateTime());
 
-  // Default person from settings or initial fallback
-  const defaultPerson = settings.staffList?.[0] || settings.managerName || 'Trần Văn Bình (Kho)';
+  // Default person from logged in user, or fallback to settings
+  const currentUser = storageService.getCurrentUser();
+  const currentUserName = currentUser
+    ? `${currentUser.fullName}${currentUser.roleTitle ? ` (${currentUser.roleTitle})` : ''}`
+    : (settings.staffList?.[0] || settings.managerName || 'Trần Văn Bình (Kho)');
+  
+  const defaultPerson = currentUserName;
   const [person, setPerson] = useState(defaultPerson);
+
+  const staffOptions = React.useMemo(() => {
+    const list = settings.staffList || [];
+    if (currentUserName && !list.includes(currentUserName)) {
+      return [currentUserName, ...list];
+    }
+    return list.length ? list : [currentUserName];
+  }, [settings.staffList, currentUserName]);
 
   // Default reason from settings or initial fallback
   const defaultReason = settings.stockInReasons?.[0] || 'Nhập mua hàng theo hợp đồng';
@@ -66,6 +142,7 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
   const manualQtyInputRef = useRef<HTMLInputElement>(null);
   const locationSelectRef = useRef<HTMLSelectElement>(null);
   const modalLocationSelectRef = useRef<HTMLSelectElement>(null);
+  const locScanGunInputRef = useRef<HTMLInputElement>(null);
   const locHtml5QrRef = useRef<Html5Qrcode | null>(null);
 
   const selectedPart = parts.find((p) => p.id === selectedPartId);
@@ -91,28 +168,29 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
 
   const handleLocScanResult = (scannedText: string) => {
     if (!scannedText.trim()) return;
-    let locName = scannedText.trim();
-    if (locName.includes('|')) {
-      const p = locName.split('|');
-      locName = p[p.length - 1].trim();
-    }
 
-    const foundInSettings = settings.locations?.find(
-      (l) => l.name.toLowerCase() === locName.toLowerCase()
-    );
+    const foundInSettings = findLocationMatch(scannedText, settings.locations || []);
 
     if (foundInSettings) {
       setSelectedLocation(foundInSettings.name);
       setCustomLocation('');
+      setMessage({
+        type: 'success',
+        text: `📍 Đã nhận diện vị trí kệ thành công: "${foundInSettings.name}"`,
+      });
     } else {
       setSelectedLocation('__custom__');
+      let locName = scannedText.trim();
+      if (locName.includes('|')) {
+        const p = locName.split('|');
+        locName = p[p.length - 1].trim();
+      }
       setCustomLocation(locName);
+      setMessage({
+        type: 'success',
+        text: `📍 Đã nhận diện vị trí mới: "${locName}"`,
+      });
     }
-
-    setMessage({
-      type: 'success',
-      text: `📍 Đã quét nhận diện vị trí kệ: "${locName}"`,
-    });
     setLocScanGunInput('');
   };
 
@@ -522,15 +600,17 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
-                      modalLocationSelectRef.current?.focus();
+                      // Jump cursor focus directly into the Rack QR Scan input!
+                      locScanGunInputRef.current?.focus();
+                      locScanGunInputRef.current?.select();
                     }
                   }}
                   onChange={(e) => setImportQtyInput(e.target.value === '' ? '' : Number(e.target.value))}
                   className="w-full px-3.5 py-2.5 bg-amber-50/50 border-2 border-amber-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 rounded-xl text-base font-mono font-bold text-slate-900 outline-hidden transition-all"
                   placeholder="👉 Tự điền số lượng kiểm đếm đợt này..."
                 />
-                <p className="text-[10px] text-slate-500 italic">
-                  💡 Gõ số lượng xong nhấn Enter để chuyển sang ô Chọn Kệ. Hệ thống không tự điền sẵn.
+                <p className="text-[10px] text-emerald-700 italic font-medium">
+                  💡 Gõ số lượng xong nhấn Enter để nhảy ngay tới ô Bắn mã QR Kệ. Hệ thống không tự điền sẵn.
                 </p>
 
                 {/* Quick Presets */}
@@ -561,10 +641,11 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
               </div>
 
               {/* Location Select & Scan Section */}
-              <div className="space-y-2 pt-2 border-t border-slate-100">
+              <div className="space-y-2.5 pt-3 border-t border-slate-100">
                 <div className="flex items-center justify-between">
-                  <label className="block text-xs font-extrabold text-slate-800">
-                    2. Vị trí / Kệ cất giữ linh kiện *
+                  <label className="block text-xs font-extrabold text-slate-800 flex items-center space-x-1.5">
+                    <MapPin className="w-4 h-4 text-emerald-600" />
+                    <span>2. Vị trí / Kệ cất giữ linh kiện *</span>
                   </label>
                   
                   <button
@@ -577,7 +658,7 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
                     }`}
                   >
                     <Camera className="w-3.5 h-3.5" />
-                    <span>{isLocScannerActive ? 'Tắt QR Kệ' : 'Quét QR Kệ (Camera)'}</span>
+                    <span>{isLocScannerActive ? 'Tắt Camera Kệ' : 'Quét Camera Kệ'}</span>
                   </button>
                 </div>
 
@@ -606,11 +687,12 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
                   </div>
                 )}
 
-                {/* Handheld barcode gun input for Rack QR */}
-                <div className="flex items-center space-x-2">
-                  <div className="relative flex-1">
-                    <MapPin className="w-4 h-4 text-emerald-600 absolute left-3 top-2.5" />
+                {/* PRIMARY: Handheld barcode gun input for Rack QR */}
+                <div className="space-y-1">
+                  <div className="relative">
+                    <MapPin className="w-4 h-4 text-emerald-600 absolute left-3 top-3" />
                     <input
+                      ref={locScanGunInputRef}
                       type="text"
                       value={locScanGunInput}
                       onChange={(e) => {
@@ -623,44 +705,73 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
                           handleLocScanResult(locScanGunInput);
                         }
                       }}
-                      placeholder="Hoặc bắn súng quét mã QR dán trên Kệ..."
-                      className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-hidden"
+                      placeholder="🎯 BẮN SÚNG QUÉT MÃ QR DÁN TRÊN KỆ TẠI ĐÂY (Tự động nhận diện kệ)..."
+                      className="w-full pl-9 pr-3 py-2.5 bg-emerald-50/60 border-2 border-emerald-400 rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-hidden transition-all"
                     />
                   </div>
+                  <p className="text-[10px] text-emerald-700 italic">
+                    ⚡ Bắn súng quét mã QR dán trên kệ để tự động nhận diện vị trí có sẵn trong hệ thống.
+                  </p>
                 </div>
 
-                {/* Location Select Dropdown */}
-                <select
-                  ref={modalLocationSelectRef}
-                  value={selectedLocation}
-                  onChange={(e) => {
-                    setSelectedLocation(e.target.value);
-                    if (e.target.value !== '__custom__') {
-                      setCustomLocation('');
-                    }
-                  }}
-                  className="w-full px-3.5 py-2.5 bg-white border-2 border-emerald-400 rounded-xl focus:ring-2 focus:ring-emerald-500 text-xs font-bold text-slate-900 outline-hidden"
-                >
-                  <option value="">-- Bắt buộc chọn khoang / kệ lưu trữ --</option>
-                  {settings.locations?.map((loc) => (
-                    <option key={loc.id} value={loc.name}>
-                      📍 {loc.name} {loc.description ? `(${loc.description})` : ''}
-                    </option>
-                  ))}
-                  <option value="__custom__">➕ Tự nhập vị trí mới...</option>
-                </select>
-
-                {/* Custom Location Text Input if custom selected or no predefined locations */}
-                {(selectedLocation === '__custom__' || (!settings.locations || settings.locations.length === 0)) && (
-                  <input
-                    type="text"
-                    value={customLocation}
-                    onChange={(e) => setCustomLocation(e.target.value)}
-                    placeholder="Tên kệ / khoang mới (VD: Kệ A1, Tủ B2)..."
-                    className="w-full mt-2 px-3.5 py-2 bg-white border-2 border-emerald-400 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-hidden"
-                    required
-                  />
+                {/* Status badge if location is selected */}
+                {selectedLocation && (
+                  <div className="p-2.5 bg-emerald-100/80 border border-emerald-300 rounded-xl flex items-center justify-between text-xs font-bold text-emerald-950">
+                    <span className="flex items-center space-x-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Kệ đã nhận diện: <strong className="underline text-emerald-900">{selectedLocation === '__custom__' ? customLocation : selectedLocation}</strong></span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedLocation('');
+                        setCustomLocation('');
+                        locScanGunInputRef.current?.focus();
+                      }}
+                      className="text-[11px] text-slate-500 hover:text-slate-800 underline font-normal"
+                    >
+                      Chọn lại
+                    </button>
+                  </div>
                 )}
+
+                {/* SECONDARY: Location Select Dropdown */}
+                <div className="pt-1">
+                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                    Hoặc chọn chọn tay vị trí trong danh sách kệ (khi không quét):
+                  </label>
+                  <select
+                    ref={modalLocationSelectRef}
+                    value={selectedLocation}
+                    onChange={(e) => {
+                      setSelectedLocation(e.target.value);
+                      if (e.target.value !== '__custom__') {
+                        setCustomLocation('');
+                      }
+                    }}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 text-xs font-semibold text-slate-800 outline-hidden"
+                  >
+                    <option value="">-- Bắt buộc chọn khoang / kệ lưu trữ --</option>
+                    {settings.locations?.map((loc) => (
+                      <option key={loc.id} value={loc.name}>
+                        📍 {loc.name} {loc.description ? `(${loc.description})` : ''}
+                      </option>
+                    ))}
+                    <option value="__custom__">➕ Tự nhập vị trí mới...</option>
+                  </select>
+
+                  {/* Custom Location Text Input if custom selected or no predefined locations */}
+                  {(selectedLocation === '__custom__' || (!settings.locations || settings.locations.length === 0)) && (
+                    <input
+                      type="text"
+                      value={customLocation}
+                      onChange={(e) => setCustomLocation(e.target.value)}
+                      placeholder="Gõ tên kệ / khoang mới (VD: Kệ A1, Tủ B2)..."
+                      className="w-full mt-2 px-3 py-2 bg-white border-2 border-emerald-400 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-hidden"
+                      required
+                    />
+                  )}
+                </div>
               </div>
               
               {/* Action Buttons */}
@@ -878,7 +989,7 @@ export const StockInView: React.FC<StockInViewProps> = ({ parts, settings, onSuc
             <SearchableSelect
               label="Người Thực Hiện / Người Nhập Kho"
               required
-              options={settings.staffList || []}
+              options={staffOptions}
               value={person}
               onChange={(val) => setPerson(val)}
               placeholder="Chọn nhân sự hoặc gõ tên mới..."

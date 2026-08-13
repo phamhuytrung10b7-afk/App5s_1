@@ -53,9 +53,12 @@ export const BufferMapView: React.FC<BufferMapViewProps> = ({ buffers, onRefresh
   // Direct Call state in Modal
   const [selectedAssemblyLine, setSelectedAssemblyLine] = useState(assemblyLinesList[0]);
   const [callQtyMap, setCallQtyMap] = useState<{ [partCode: string]: number }>({});
-  const [callRequestedBy, setCallRequestedBy] = useState(
-    (settings.staffList && settings.staffList[0]) || 'Nguyễn Văn A (Trưởng Dây Chuyền 1)'
-  );
+  const currentUser = storageService.getCurrentUser();
+  const defaultRequester = currentUser
+    ? `${currentUser.fullName}${currentUser.roleTitle ? ` (${currentUser.roleTitle})` : ''}`
+    : ((settings.staffList && settings.staffList[0]) || 'Nguyễn Văn A (Trưởng Dây Chuyền 1)');
+
+  const [callRequestedBy, setCallRequestedBy] = useState(defaultRequester);
 
   // Manage Part / Shelf state in Modal
   const [shelfModelName, setShelfModelName] = useState('');

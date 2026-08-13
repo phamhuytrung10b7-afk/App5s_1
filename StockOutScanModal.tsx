@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Part, AppSettings } from './types';
 import { storageService } from './storage';
+import { LocationCameraScannerModal } from './LocationCameraScannerModal';
 import {
   X,
   CheckCircle2,
@@ -61,6 +62,7 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
   // Allow empty string initially so user types quantity without pre-filled number
   const [qty, setQty] = useState<number | ''>(initialQty && initialQty > 0 ? initialQty : '');
   const [scannedLocation, setScannedLocation] = useState<string>('');
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const [person, setPerson] = useState<string>(defaultPerson || settings.staffList?.[0] || 'Thủ kho');
   const [productionOrder, setProductionOrder] = useState<string>(defaultLSX || settings.productionOrders?.[0] || 'LSX-XUẤT-QUÉT');
   const [purpose, setPurpose] = useState<string>(defaultPurpose || settings.stockOutPurposes?.[0] || 'Sản xuất theo đơn hàng');
@@ -376,45 +378,58 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
               </div>
             </div>
 
-            {/* Scanner Input field */}
-            <div className="relative">
-              <input
-                ref={locationInputRef}
-                type="text"
-                value={scannedLocation}
-                onChange={(e) => {
-                  setScannedLocation(e.target.value);
-                  setLocationError(null);
-                }}
-                placeholder={`[Bắn súng quét mã Kệ hoặc chọn danh sách] Ví dụ: ${expectedFifoLocationName}...`}
-                className={`w-full pl-10 pr-28 py-3 bg-white border-2 rounded-xl text-sm font-bold text-slate-900 outline-hidden transition-all ${
-                  isLocationValid && scannedLocation
-                    ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-200'
-                    : scannedLocation && !isLocationValid
-                    ? 'border-red-500 bg-red-50/40 ring-2 ring-red-200'
-                    : 'border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100'
-                }`}
-              />
-              <QrCode className="w-5 h-5 text-blue-600 absolute left-3 top-1/2 -translate-y-1/2" />
-
-              {/* Quick Preset Dropdown */}
-              <select
-                onChange={(e) => {
-                  if (e.target.value) {
+            {/* Scanner Input field with Camera Scanner Button */}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <input
+                  ref={locationInputRef}
+                  type="text"
+                  value={scannedLocation}
+                  onChange={(e) => {
                     setScannedLocation(e.target.value);
                     setLocationError(null);
-                  }
-                }}
-                value=""
-                className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-blue-50 text-blue-900 font-bold text-xs rounded-lg border border-blue-200 cursor-pointer"
+                  }}
+                  placeholder={`[Bắn súng quét hoặc bấm Quét Camera] Ví dụ: ${expectedFifoLocationName}...`}
+                  className={`w-full pl-10 pr-28 py-3 bg-white border-2 rounded-xl text-sm font-bold text-slate-900 outline-hidden transition-all ${
+                    isLocationValid && scannedLocation
+                      ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-200'
+                      : scannedLocation && !isLocationValid
+                      ? 'border-red-500 bg-red-50/40 ring-2 ring-red-200'
+                      : 'border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100'
+                  }`}
+                />
+                <QrCode className="w-5 h-5 text-blue-600 absolute left-3 top-1/2 -translate-y-1/2" />
+
+                {/* Quick Preset Dropdown */}
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setScannedLocation(e.target.value);
+                      setLocationError(null);
+                    }
+                  }}
+                  value=""
+                  className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-blue-50 text-blue-900 font-bold text-xs rounded-lg border border-blue-200 cursor-pointer"
+                >
+                  <option value="">-- Chọn Kệ --</option>
+                  {(settings.locations || []).map((loc) => (
+                    <option key={loc.id} value={loc.name}>
+                      {loc.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsCameraModalOpen(true)}
+                className="px-3.5 py-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center space-x-1.5 cursor-pointer shrink-0 ring-2 ring-emerald-300/60"
+                title="Mở Camera quét mã QR / Barcode dán trên Kệ"
               >
-                <option value="">-- Chọn Kệ --</option>
-                {(settings.locations || []).map((loc) => (
-                  <option key={loc.id} value={loc.name}>
-                    {loc.name}
-                  </option>
-                ))}
-              </select>
+                <Camera className="w-4.5 h-4.5 text-white" />
+                <span className="hidden sm:inline">Quét Camera Kệ</span>
+                <span className="sm:hidden">Camera</span>
+              </button>
             </div>
 
             {/* VALIDATION FEEDBACK BOX - BRIGHT LIGHT THEME */}
@@ -524,6 +539,18 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
             </button>
           </div>
         </form>
+
+        {/* Dedicated Camera Scan Modal */}
+        <LocationCameraScannerModal
+          isOpen={isCameraModalOpen}
+          onClose={() => setIsCameraModalOpen(false)}
+          onScanSuccess={(scannedText) => {
+            setScannedLocation(scannedText);
+            setLocationError(null);
+          }}
+          title="Quét Mã QR / Barcode Vị Trí Kệ"
+          hintText="Căn giữa mã QR / Barcode dán trên Kệ vào khung hình"
+        />
       </div>
     </div>
   );

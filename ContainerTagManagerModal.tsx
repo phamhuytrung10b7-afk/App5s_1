@@ -245,17 +245,17 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
         }
         .tag-card-title {
           font-weight: 900;
-          font-size: 9.5px;
+          font-size: 11.5px;
           letter-spacing: -0.2px;
           color: #000;
           white-space: nowrap;
         }
         .tag-card-stt {
           font-weight: 900;
-          font-size: 8.5px;
+          font-size: 10.5px;
           font-family: monospace;
           border: 1px solid #000;
-          padding: 0 3px;
+          padding: 0 4px;
           background: #fff;
           white-space: nowrap;
         }
@@ -264,13 +264,13 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
           border-collapse: collapse;
           table-layout: fixed;
           border: 1px solid #000;
-          font-size: 8px;
+          font-size: 9.5px;
           color: #000;
           box-sizing: border-box;
         }
         .tag-card-table td {
           border: 1px solid #000;
-          padding: 1px 2px;
+          padding: 1px 3px;
           vertical-align: middle;
           box-sizing: border-box;
           overflow: hidden;
@@ -279,15 +279,15 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
           background-color: #f1f5f9 !important;
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
-          font-weight: bold;
-          font-size: 8px;
+          font-weight: 800;
+          font-size: 9.5px;
           color: #000;
         }
         .tag-card-footer {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          font-size: 7.5px;
+          font-size: 9px;
           font-family: monospace;
           color: #000;
           padding-top: 1px;
@@ -309,16 +309,17 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
 
     // Dynamic auto-scaling font size for long part names and codes
     const getPartNameFontSize = (text: string) => {
-      if (text.length > 35) return '6.5px';
-      if (text.length > 25) return '7px';
-      if (text.length > 18) return '7.5px';
-      return '8.5px';
+      if (text.length > 40) return '8.5px';
+      if (text.length > 28) return '9.5px';
+      if (text.length > 18) return '10.5px';
+      return '11.5px';
     };
 
     const getPartCodeFontSize = (text: string) => {
-      if (text.length > 25) return '7px';
-      if (text.length > 18) return '7.5px';
-      return '8.5px';
+      if (text.length > 30) return '8.5px';
+      if (text.length > 20) return '9.5px';
+      if (text.length > 14) return '10.5px';
+      return '11.5px';
     };
 
     return (
@@ -363,7 +364,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
             className="tag-card-title"
             style={{
               fontWeight: 900,
-              fontSize: '9.5px',
+              fontSize: '11.5px',
               letterSpacing: '-0.2px',
               color: '#000',
               whiteSpace: 'nowrap',
@@ -375,7 +376,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
             className="tag-card-stt"
             style={{
               fontWeight: 900,
-              fontSize: '8.5px',
+              fontSize: '10.5px',
               fontFamily: 'monospace',
               border: '1px solid #000',
               padding: '0 3px',
@@ -395,7 +396,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
             borderCollapse: 'collapse',
             tableLayout: 'fixed',
             border: '1px solid #000',
-            fontSize: '8px',
+            fontSize: '9.5px',
             color: '#000',
             boxSizing: 'border-box',
           }}
@@ -416,7 +417,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                   padding: '1px 2px',
                   backgroundColor: '#f1f5f9',
                   fontWeight: 'bold',
-                  fontSize: '8px',
+                  fontSize: '9.5px',
                 }}
               >
                 Nhóm
@@ -425,8 +426,8 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                 style={{
                   border: '1px solid #000',
                   padding: '1px 2px',
-                  fontWeight: 'bold',
-                  fontSize: '8px',
+                  fontWeight: 900,
+                  fontSize: '10.5px',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
@@ -441,7 +442,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                   padding: '1px 2px',
                   backgroundColor: '#f1f5f9',
                   fontWeight: 'bold',
-                  fontSize: '8px',
+                  fontSize: '9.5px',
                 }}
               >
                 NCC
@@ -462,7 +463,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                     borderRadius: '3px',
                     border: '1px solid #000',
                     fontWeight: 900,
-                    fontSize: '7.5px',
+                    fontSize: '9px',
                     textAlign: 'center',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
@@ -485,7 +486,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                   padding: '1px 2px',
                   backgroundColor: '#f1f5f9',
                   fontWeight: 'bold',
-                  fontSize: '8px',
+                  fontSize: '9.5px',
                 }}
               >
                 Tên linh kiện
@@ -511,7 +512,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                   padding: '1px 2px',
                   backgroundColor: '#f1f5f9',
                   fontWeight: 'bold',
-                  fontSize: '8px',
+                  fontSize: '9.5px',
                 }}
               >
                 Quy cách CCDC
@@ -520,8 +521,8 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                 style={{
                   border: '1px solid #000',
                   padding: '1px 2px',
-                  fontWeight: 'bold',
-                  fontSize: '8px',
+                  fontWeight: 900,
+                  fontSize: '10.5px',
                 }}
               >
                 {tag.ccdcSpec || '0'}
@@ -537,7 +538,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                   padding: '1px 2px',
                   backgroundColor: '#f1f5f9',
                   fontWeight: 'bold',
-                  fontSize: '8px',
+                  fontSize: '9.5px',
                 }}
               >
                 Mã linh kiện
@@ -563,7 +564,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                   padding: '1px 2px',
                   backgroundColor: '#f1f5f9',
                   fontWeight: 'bold',
-                  fontSize: '8px',
+                  fontSize: '9.5px',
                 }}
               >
                 Ghi chú
@@ -573,7 +574,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                   border: '1px solid #000',
                   padding: '1px 2px',
                   fontFamily: 'monospace',
-                  fontSize: '7.5px',
+                  fontSize: '9px',
                 }}
               >
                 Số ......
@@ -589,7 +590,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                   padding: '1px 2px',
                   backgroundColor: '#f1f5f9',
                   fontWeight: 'bold',
-                  fontSize: '8px',
+                  fontSize: '9.5px',
                 }}
               >
                 Số lượng
@@ -599,7 +600,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                   border: '1px solid #000',
                   padding: '1px 2px',
                   fontWeight: 900,
-                  fontSize: '9.5px',
+                  fontSize: '13px',
                 }}
               >
                 {tag.standardQty > 0 ? tag.standardQty : ''}
@@ -611,7 +612,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                   padding: '1px 2px',
                   backgroundColor: '#f1f5f9',
                   fontWeight: 'bold',
-                  fontSize: '8px',
+                  fontSize: '9.5px',
                 }}
               >
                 ĐVT
@@ -620,8 +621,8 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                 style={{
                   border: '1px solid #000',
                   padding: '1px 2px',
-                  fontWeight: 'bold',
-                  fontSize: '8px',
+                  fontWeight: 900,
+                  fontSize: '10.5px',
                 }}
               >
                 {tag.unit || 'cái/bộ'}
@@ -637,7 +638,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                   padding: '1px 2px',
                   backgroundColor: '#f1f5f9',
                   fontWeight: 'bold',
-                  fontSize: '8px',
+                  fontSize: '9.5px',
                 }}
               >
                 Khối lượng
@@ -647,7 +648,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                   border: '1px solid #000',
                   padding: '1px 2px',
                   fontWeight: 'bold',
-                  fontSize: '8px',
+                  fontSize: '10px',
                 }}
               >
                 -
@@ -659,7 +660,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                   padding: '1px 2px',
                   backgroundColor: '#f1f5f9',
                   fontWeight: 'bold',
-                  fontSize: '8px',
+                  fontSize: '9.5px',
                 }}
               >
                 Tần suất
@@ -668,8 +669,8 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                 style={{
                   border: '1px solid #000',
                   padding: '1px 2px',
-                  fontWeight: 'bold',
-                  fontSize: '8px',
+                  fontWeight: 900,
+                  fontSize: '10px',
                 }}
               >
                 {tag.mfgFrequency || '1h / 1 lần'}
@@ -685,7 +686,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                   padding: '1px 2px',
                   backgroundColor: '#f1f5f9',
                   fontWeight: 'bold',
-                  fontSize: '8px',
+                  fontSize: '9.5px',
                 }}
               >
                 Mã vạch QR
@@ -711,7 +712,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                 >
                   <QRCodeSVG
                     value={tag.qrPayload}
-                    size={28}
+                    size={32}
                     level="M"
                     includeMargin={false}
                   />
@@ -724,7 +725,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                   padding: '1px 2px',
                   backgroundColor: '#f1f5f9',
                   fontWeight: 'bold',
-                  fontSize: '8px',
+                  fontSize: '9.5px',
                 }}
               >
                 Thời gian cần thực
@@ -734,7 +735,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                   border: '1px solid #000',
                   padding: '1px 2px',
                   fontFamily: 'monospace',
-                  fontSize: '7.5px',
+                  fontSize: '9px',
                 }}
               >
                 ......(h)
@@ -750,7 +751,7 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            fontSize: '7.5px',
+            fontSize: '9px',
             fontFamily: 'monospace',
             color: '#000',
             paddingTop: '1px',
@@ -764,11 +765,12 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
               maxWidth: '65mm',
+              fontWeight: 800,
             }}
           >
             Payload: {tag.qrPayload}
           </span>
-          <span style={{ fontWeight: 'bold', flexShrink: 0 }}>
+          <span style={{ fontWeight: 900, flexShrink: 0 }}>
             NMBD - SUNHOUSE
           </span>
         </div>

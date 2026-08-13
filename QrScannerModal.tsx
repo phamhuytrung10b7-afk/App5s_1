@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Part } from './types';
 import { storageService } from './storage';
-import { QrCode, X, Camera, Zap, CheckCircle2, AlertCircle, Package, Search, ShieldAlert } from 'lucide-react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { QrCode, X, Camera, Zap, CheckCircle2, AlertCircle, Package, Search, ShieldAlert, Flashlight, SwitchCamera } from 'lucide-react';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
 interface QrScannerModalProps {
   isOpen: boolean;
@@ -72,6 +72,11 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [matchedPart, setMatchedPart] = useState<Part | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isTorchOn, setIsTorchOn] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
+
   const html5QrcodeRef = useRef<Html5Qrcode | null>(null);
   const manualInputRef = useRef<HTMLInputElement>(null);
 
@@ -171,96 +176,133 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     }
   };
 
-  const startCamera = async () => {
-    setCameraError(null);
-    setIsCameraActive(true);
-
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setCameraError(
-        'Trình duyệt hoặc môi trường này không hỗ trợ truy cập Camera trực tiếp. Bạn vui lòng sử dụng súng quét mã Barcode USB hoặc gõ mã/tên linh kiện ở ô trên.'
-      );
-      setIsCameraActive(false);
-      return;
-    }
-
-    // Small timeout to allow element #qr-reader to mount in DOM
-    setTimeout(async () => {
-      try {
-        const html5QrCode = new Html5Qrcode('qr-reader');
-        html5QrcodeRef.current = html5QrCode;
-
-        const onScanSuccess = (decodedText: string) => {
-          playBeepSound();
-          if (typeof navigator !== 'undefined' && navigator.vibrate) {
-            navigator.vibrate([100, 50, 100]);
-          }
-          setManualCode(decodedText);
-          stopCamera();
-        };
-
-        const cameraParam: any = { facingMode: 'environment' };
-
-        const qrConfig = {
-          fps: 25,
-          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-            const qrboxSize = Math.floor(minEdge * 0.92);
-            return { width: Math.max(qrboxSize, 220), height: Math.max(qrboxSize, 220) };
-          },
-          aspectRatio: 1.0,
-          experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true,
-          },
-        };
-
-        try {
-          await html5QrCode.start(cameraParam, qrConfig, onScanSuccess, () => {});
-        } catch (envErr: any) {
-          console.warn('Environment camera start attempt failed, trying user camera...', envErr);
-          const devices = await Html5Qrcode.getCameras().catch(() => []);
-          let cameraId: any = { facingMode: 'user' };
-          if (devices && devices.length > 0) {
-            const backCamera = devices.find((d) =>
-              d.label.toLowerCase().includes('back') ||
-              d.label.toLowerCase().includes('environment') ||
-              d.label.toLowerCase().includes('rear') ||
-              d.label.toLowerCase().includes('sau')
-            );
-            cameraId = backCamera ? backCamera.id : devices[devices.length - 1].id;
-          }
-          await html5QrCode.start(cameraId, qrConfig, onScanSuccess, () => {});
-        }
-      } catch (err: any) {
-        console.warn('Camera start issue caught:', err);
-        const errString = String(err?.message || err || '');
-        if (
-          errString.includes('NotAllowedError') ||
-          errString.includes('Permission denied') ||
-          errString.includes('Permission')
-        ) {
-          setCameraError(
-            'Quyền truy cập Camera đã bị hệ thống / trình duyệt từ chối. Bạn có thể mở ứng dụng ở Tab Mới và cấp quyền Camera, hoặc sử dụng súng quét mã Barcode / gõ mã trực tiếp.'
-          );
-        } else {
-          setCameraError(
-            'Không thể kết nối Camera thiết bị. Bạn vui lòng dùng súng quét mã hoặc nhập mã linh kiện ở trên.'
-          );
-        }
-        setIsCameraActive(false);
-      }
-    }, 150);
-  };
-
   const stopCamera = async () => {
-    if (html5QrcodeRef.current && html5QrcodeRef.current.isScanning) {
+    if (html5QrcodeRef.current) {
       try {
-        await html5QrcodeRef.current.stop();
+        if (html5QrcodeRef.current.isScanning) {
+          await html5QrcodeRef.current.stop();
+        }
         html5QrcodeRef.current.clear();
       } catch (err) {
         console.error('Stop camera error', err);
       }
+      html5QrcodeRef.current = null;
     }
     setIsCameraActive(false);
+    setIsTorchOn(false);
+    setTorchSupported(false);
+  };
+
+  const startCamera = async (camId?: string) => {
+    setCameraError(null);
+    setIsTorchOn(false);
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setCameraError(
+        'Trình duyệt không hỗ trợ truy cập Camera trực tiếp. Vui lòng gõ mã ở trên.'
+      );
+      return;
+    }
+
+    try {
+      await stopCamera();
+      setIsCameraActive(true);
+
+      const devices = await Html5Qrcode.getCameras().catch(() => []);
+      if (devices && devices.length > 0) {
+        setCameras(devices.map((d, i) => ({ id: d.id, label: d.label || `Camera ${i + 1}` })));
+        if (!camId && !selectedCameraId) {
+          const back = devices.find((d) => {
+            const l = d.label.toLowerCase();
+            return (l.includes('back') || l.includes('rear') || l.includes('sau') || l.includes('environment')) &&
+              !l.includes('wide') && !l.includes('0.5');
+          }) || devices[devices.length - 1];
+          setSelectedCameraId(back.id);
+          camId = back.id;
+        }
+      }
+
+      const html5QrCode = new Html5Qrcode('qr-reader');
+      html5QrcodeRef.current = html5QrCode;
+
+      const onScanSuccess = (decodedText: string) => {
+        playBeepSound();
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          try { navigator.vibrate([100, 50, 100]); } catch(e){}
+        }
+        setManualCode(decodedText);
+        stopCamera();
+      };
+
+      const qrConfig = {
+        fps: 30,
+        qrbox: (w: number, h: number) => {
+          const minEdge = Math.min(w, h);
+          return { width: Math.max(Math.floor(minEdge * 0.85), 220), height: Math.max(Math.floor(minEdge * 0.70), 180) };
+        },
+        aspectRatio: 1.0,
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.DATA_MATRIX,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.PDF_417,
+        ],
+      };
+
+      const activeCam = camId || selectedCameraId;
+      if (activeCam) {
+        await html5QrCode.start(
+          activeCam,
+          qrConfig,
+          onScanSuccess,
+          () => {}
+        );
+      } else {
+        await html5QrCode.start(
+          { facingMode: 'environment' },
+          qrConfig,
+          onScanSuccess,
+          () => {}
+        );
+      }
+
+      try {
+        const stream = (html5QrCode as any).mediaStream as MediaStream;
+        if (stream && stream.getVideoTracks()[0]?.getCapabilities) {
+          const caps = stream.getVideoTracks()[0].getCapabilities() as any;
+          if (caps?.torch) setTorchSupported(true);
+        }
+      } catch (e) {}
+
+    } catch (err: any) {
+      console.warn('Camera start issue:', err);
+      setCameraError('Không thể mở Camera. Vui lòng cấp quyền sử dụng camera.');
+      setIsCameraActive(false);
+    }
+  };
+
+  const toggleTorch = async () => {
+    if (!html5QrcodeRef.current || !html5QrcodeRef.current.isScanning) return;
+    const nextState = !isTorchOn;
+
+    try {
+      await html5QrcodeRef.current.applyVideoConstraints({ advanced: [{ torch: nextState } as any] });
+      setIsTorchOn(nextState);
+    } catch (err) {
+      try {
+        const stream = (html5QrcodeRef.current as any).mediaStream as MediaStream;
+        const track = stream?.getVideoTracks()[0];
+        if (track) {
+          await track.applyConstraints({ advanced: [{ torch: nextState } as any] });
+          setIsTorchOn(nextState);
+        }
+      } catch (e) {}
+    }
   };
 
   if (!isOpen) return null;
@@ -276,7 +318,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-base">QUÉT MÃ QR / BARCODE LINH KIỆN</h3>
-              <p className="text-[11px] text-blue-100">Dùng súng quét barcode hoặc Camera để chọn nhanh linh kiện</p>
+              <p className="text-[11px] text-blue-100">Dùng súng quét barcode hoặc Camera nét cao</p>
             </div>
           </div>
           <button
@@ -381,26 +423,54 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
           <div className="pt-2 border-t border-slate-100 space-y-3">
             <button
               type="button"
-              onClick={isCameraActive ? stopCamera : startCamera}
-              className={`w-full py-3 rounded-2xl text-xs font-bold transition-all flex items-center justify-center space-x-2 cursor-pointer border ${
+              onClick={isCameraActive ? stopCamera : () => startCamera()}
+              className={`w-full py-3 rounded-2xl text-xs font-extrabold transition-all flex items-center justify-center space-x-2 cursor-pointer border shadow-sm ${
                 isCameraActive
-                  ? 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
-                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                  ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500'
               }`}
             >
-              <Camera className={`w-4 h-4 ${isCameraActive ? 'text-red-600' : 'text-blue-600'}`} />
-              <span>{isCameraActive ? 'Tắt Camera Quét' : 'Bật Camera Quét Trực Tiếp'}</span>
+              <Camera className="w-4 h-4" />
+              <span>{isCameraActive ? 'Tắt Camera Quét' : 'Bật Camera Quét Nét Cao'}</span>
             </button>
 
             <div className={isCameraActive ? 'block space-y-2' : 'hidden'}>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-700 flex items-center space-x-1.5">
-                  <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-ping"></span>
-                  <span>Camera Đang Hoạt Động</span>
-                </span>
+              <div className="flex items-center justify-between bg-slate-900 text-white p-2 rounded-xl text-xs">
+                {cameras.length > 1 && (
+                  <div className="flex items-center space-x-1 flex-1">
+                    <SwitchCamera className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <select
+                      value={selectedCameraId}
+                      onChange={(e) => {
+                        setSelectedCameraId(e.target.value);
+                        startCamera(e.target.value);
+                      }}
+                      className="bg-slate-800 text-emerald-300 font-bold text-xs py-1 px-2 rounded-lg border border-slate-700 outline-none w-full max-w-xs"
+                    >
+                      {cameras.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {torchSupported && (
+                  <button
+                    type="button"
+                    onClick={toggleTorch}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1 cursor-pointer transition-all ${
+                      isTorchOn ? 'bg-amber-400 text-slate-950 font-black' : 'bg-slate-800 text-amber-300 border border-amber-500/30'
+                    }`}
+                  >
+                    <Flashlight className="w-3.5 h-3.5" />
+                    <span>{isTorchOn ? 'TẮT FLASH' : 'BẬT FLASH'}</span>
+                  </button>
+                )}
               </div>
 
-              <div id="qr-reader" className="w-full rounded-2xl overflow-hidden border-2 border-blue-400 bg-black"></div>
+              <div id="qr-reader" className="w-full rounded-2xl overflow-hidden border-2 border-emerald-500 bg-black min-h-[280px]"></div>
             </div>
 
             {cameraError && (
@@ -423,3 +493,4 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     </div>
   );
 };
+

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
-import { Camera, Flashlight, FlashlightOff, X, Zap, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { Camera, Flashlight, X, RefreshCw, AlertCircle, SwitchCamera, CheckCircle2 } from 'lucide-react';
 
 interface LocationCameraScannerModalProps {
   isOpen: boolean;
@@ -21,16 +21,49 @@ export const LocationCameraScannerModal: React.FC<LocationCameraScannerModalProp
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isTorchOn, setIsTorchOn] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
+  const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
 
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const containerIdRef = useRef(`loc-cam-reader-${Math.random().toString(36).substring(2, 9)}`);
 
+  // Detect camera devices when opened
   useEffect(() => {
     if (isOpen) {
-      // Delay slightly for modal DOM mount
+      Html5Qrcode.getCameras()
+        .then((devices) => {
+          if (devices && devices.length > 0) {
+            const formatted = devices.map((d, index) => ({
+              id: d.id,
+              label: d.label || `Camera ${index + 1}`,
+            }));
+            setCameras(formatted);
+
+            // Prioritize main rear/back camera (avoid ultra-wide or front)
+            const backCam = devices.find((d) => {
+              const lbl = d.label.toLowerCase();
+              return (
+                (lbl.includes('back') || lbl.includes('rear') || lbl.includes('sau') || lbl.includes('environment')) &&
+                !lbl.includes('wide') &&
+                !lbl.includes('ultra') &&
+                !lbl.includes('0.5') &&
+                !lbl.includes('front')
+              );
+            }) || devices.find((d) => {
+              const lbl = d.label.toLowerCase();
+              return lbl.includes('back') || lbl.includes('rear') || lbl.includes('sau') || lbl.includes('environment');
+            }) || devices[devices.length - 1];
+
+            setSelectedCameraId(backCam.id);
+          }
+        })
+        .catch((err) => {
+          console.warn('Could not enumerate cameras:', err);
+        });
+
       const timer = setTimeout(() => {
         startCamera();
-      }, 150);
+      }, 100);
       return () => clearTimeout(timer);
     } else {
       stopCamera();
@@ -58,7 +91,7 @@ export const LocationCameraScannerModal: React.FC<LocationCameraScannerModalProp
     onClose();
   };
 
-  const startCamera = async () => {
+  const startCamera = async (overrideCamId?: string) => {
     setIsInitializing(true);
     setErrorMsg(null);
     setIsTorchOn(false);
@@ -77,11 +110,11 @@ export const LocationCameraScannerModal: React.FC<LocationCameraScannerModalProp
           try {
             navigator.vibrate(200);
           } catch (e) {
-            // ignore vibration error
+            // ignore
           }
         }
 
-        // 2. Play Crisp Beep Audio Feedback
+        // 2. Play Beep Audio
         try {
           const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
           if (AudioContext) {
@@ -98,7 +131,7 @@ export const LocationCameraScannerModal: React.FC<LocationCameraScannerModalProp
             osc.stop(ctx.currentTime + 0.15);
           }
         } catch (e) {
-          // ignore audio error
+          // ignore
         }
 
         let cleanText = decodedText.trim();
@@ -113,57 +146,48 @@ export const LocationCameraScannerModal: React.FC<LocationCameraScannerModalProp
         onClose();
       };
 
-      // Configuration optimized for high speed scanning and small QR code detection
+      // Support ALL 1D and 2D barcode formats for small or custom QR tags
       const qrConfig = {
-        fps: 30, // 30 FPS for instant response
+        fps: 30, // High frame rate for fast detection
         qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
           const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-          // 75% of container min dimension for centered focus
-          const size = Math.max(Math.min(Math.floor(minEdge * 0.78), 320), 220);
-          return { width: size, height: size };
+          // Standard rectangular/square scan box optimized for small QR / Barcode
+          const width = Math.max(Math.floor(minEdge * 0.85), 220);
+          const height = Math.max(Math.floor(minEdge * 0.70), 180);
+          return { width, height };
         },
         aspectRatio: 1.0,
         experimentalFeatures: {
-          useBarCodeDetectorIfSupported: true, // Hardware accelerated BarcodeDetector API if available
+          useBarCodeDetectorIfSupported: true, // Native GPU/Browser BarcodeDetector API
         },
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.DATA_MATRIX,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.PDF_417,
+        ],
       };
 
-      // Camera constraints with high resolution focus for small QR codes
-      const cameraConstraints = {
-        facingMode: 'environment',
-        width: { min: 640, ideal: 1920 },
-        height: { min: 480, ideal: 1080 },
-      };
+      const targetCam = overrideCamId || selectedCameraId;
 
-      try {
-        await html5QrCode.start(cameraConstraints, qrConfig, handleSuccess, () => {});
-      } catch (firstErr) {
-        console.warn('facingMode environment start failed, retrying with device enumeration...', firstErr);
-        const devices = await Html5Qrcode.getCameras().catch(() => []);
-        if (devices && devices.length > 0) {
-          const backCam = devices.find(
-            (d) =>
-              d.label.toLowerCase().includes('back') ||
-              d.label.toLowerCase().includes('environment') ||
-              d.label.toLowerCase().includes('rear') ||
-              d.label.toLowerCase().includes('sau')
-          );
-          const selectedCamId = backCam ? backCam.id : devices[devices.length - 1].id;
-          await html5QrCode.start(selectedCamId, qrConfig, handleSuccess, () => {});
-        } else {
-          throw firstErr;
-        }
+      if (targetCam) {
+        await html5QrCode.start(targetCam, qrConfig, handleSuccess, () => {});
+      } else {
+        await html5QrCode.start({ facingMode: 'environment' }, qrConfig, handleSuccess, () => {});
       }
 
       setIsInitializing(false);
 
-      // Detect torch capabilities
+      // Check flashlight support
       try {
         const capabilities = html5QrCode.getRunningTrackCapabilities();
         if (capabilities && (capabilities as any).torch !== undefined) {
           setTorchSupported(true);
         } else {
-          // Fallback check on MediaStreamTrack
           const stream = (html5QrCode as any).mediaStream as MediaStream;
           if (stream) {
             const track = stream.getVideoTracks()[0];
@@ -177,12 +201,35 @@ export const LocationCameraScannerModal: React.FC<LocationCameraScannerModalProp
         setTorchSupported(false);
       }
     } catch (err: any) {
-      console.error('Camera initialization error:', err);
+      console.error('Camera start error:', err);
+      // Retry with simple constraints if initial high-res failed
+      try {
+        if (html5QrCodeRef.current) {
+          await html5QrCodeRef.current.start(
+            { facingMode: 'environment' },
+            { fps: 25 },
+            (text) => {
+              onScanSuccess(text);
+              stopCamera();
+              onClose();
+            },
+            () => {}
+          );
+          setIsInitializing(false);
+          return;
+        }
+      } catch (retryErr) {
+        console.error('Retry failed:', retryErr);
+      }
+
       setIsInitializing(false);
-      setErrorMsg(
-        'Không thể mở Camera. Vui lòng cho phép quyền sử dụng Camera trên trình duyệt và thử lại.'
-      );
+      setErrorMsg('Không thể mở Camera. Vui lòng cho phép quyền sử dụng Camera trên trình duyệt.');
     }
+  };
+
+  const handleSwitchCamera = (camId: string) => {
+    setSelectedCameraId(camId);
+    startCamera(camId);
   };
 
   const toggleTorch = async () => {
@@ -195,7 +242,6 @@ export const LocationCameraScannerModal: React.FC<LocationCameraScannerModalProp
       });
       setIsTorchOn(nextState);
     } catch (err) {
-      console.warn('Error toggling torch via html5QrCode, trying track directly:', err);
       try {
         const stream = (html5QrCodeRef.current as any).mediaStream as MediaStream;
         if (stream) {
@@ -208,7 +254,7 @@ export const LocationCameraScannerModal: React.FC<LocationCameraScannerModalProp
           }
         }
       } catch (e) {
-        console.warn('Direct track torch toggle failed:', e);
+        console.warn('Torch toggle failed:', e);
       }
     }
   };
@@ -216,7 +262,7 @@ export const LocationCameraScannerModal: React.FC<LocationCameraScannerModalProp
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
       <div className="relative w-full max-w-md bg-slate-900 text-white rounded-3xl shadow-2xl border border-slate-700/80 overflow-hidden flex flex-col my-auto">
         
         {/* Header */}
@@ -227,7 +273,7 @@ export const LocationCameraScannerModal: React.FC<LocationCameraScannerModalProp
             </div>
             <div>
               <h3 className="font-extrabold text-sm sm:text-base text-white">{title}</h3>
-              <p className="text-[11px] text-slate-300">Camera sau tự động nét cao</p>
+              <p className="text-[11px] text-slate-300">Tự động lấy nét QR & Barcode 1D/2D</p>
             </div>
           </div>
 
@@ -240,16 +286,35 @@ export const LocationCameraScannerModal: React.FC<LocationCameraScannerModalProp
           </button>
         </div>
 
+        {/* Camera Selector Dropdown (If multiple back cameras exist) */}
+        {cameras.length > 1 && (
+          <div className="px-4 py-2 bg-slate-800/60 border-b border-slate-700/60 flex items-center space-x-2">
+            <SwitchCamera className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span className="text-[11px] font-bold text-slate-300 shrink-0">Chọn Camera:</span>
+            <select
+              value={selectedCameraId}
+              onChange={(e) => handleSwitchCamera(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1 text-xs text-emerald-300 font-semibold focus:ring-1 focus:ring-emerald-400 outline-none"
+            >
+              {cameras.map((cam) => (
+                <option key={cam.id} value={cam.id}>
+                  {cam.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Camera Container Area */}
-        <div className="relative bg-black min-h-[320px] flex items-center justify-center overflow-hidden">
+        <div className="relative bg-black min-h-[300px] flex items-center justify-center overflow-hidden">
           {/* HTML5 QR CODE ELEMENT */}
-          <div id={containerIdRef.current} className="w-full h-full min-h-[320px]"></div>
+          <div id={containerIdRef.current} className="w-full h-full min-h-[300px]"></div>
 
           {/* Loading spinner */}
           {isInitializing && !errorMsg && (
             <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center space-y-3 z-10">
               <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin" />
-              <p className="text-xs font-bold text-slate-200">Đang khởi động Camera siêu nét...</p>
+              <p className="text-xs font-bold text-slate-200">Đang khởi động Camera độ nét cao...</p>
             </div>
           )}
 
@@ -259,7 +324,7 @@ export const LocationCameraScannerModal: React.FC<LocationCameraScannerModalProp
               <AlertCircle className="w-12 h-12 text-rose-500" />
               <p className="text-xs text-rose-200 font-semibold leading-relaxed max-w-xs">{errorMsg}</p>
               <button
-                onClick={startCamera}
+                onClick={() => startCamera()}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold rounded-xl shadow-md transition-all cursor-pointer flex items-center space-x-1.5"
               >
                 <RefreshCw className="w-4 h-4" />
@@ -290,17 +355,8 @@ export const LocationCameraScannerModal: React.FC<LocationCameraScannerModalProp
                   : 'bg-slate-800 text-slate-500 border-slate-700/50 cursor-not-allowed opacity-60'
               }`}
             >
-              {isTorchOn ? (
-                <>
-                  <Flashlight className="w-4 h-4 fill-slate-950 text-slate-950" />
-                  <span>TẮT ĐÈN FLASH</span>
-                </>
-              ) : (
-                <>
-                  <Flashlight className="w-4 h-4 text-amber-400" />
-                  <span>{torchSupported ? 'BẬT ĐÈN FLASH' : 'ĐÈN FLASH (KHÔNG HỖ TRỢ)'}</span>
-                </>
-              )}
+              <Flashlight className={`w-4 h-4 ${isTorchOn ? 'fill-slate-950 text-slate-950' : 'text-amber-400'}`} />
+              <span>{isTorchOn ? 'TẮT ĐÈN FLASH' : torchSupported ? 'BẬT ĐÈN FLASH' : 'ĐÈN FLASH (N/A)'}</span>
             </button>
 
             {/* Cancel / Close Button */}
@@ -317,3 +373,4 @@ export const LocationCameraScannerModal: React.FC<LocationCameraScannerModalProp
     </div>
   );
 };
+

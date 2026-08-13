@@ -53,7 +53,6 @@ export const ALL_TAB_DEFINITIONS: { id: ViewTab; label: string; icon: React.Elem
   { id: 'andon_history', label: '4. Lịch sử cấp hàng (Lịch sử Andon)', icon: Clock, category: 'Gọi & Vận Chuyển' },
 
   { id: 'bin_card', label: 'Thẻ kho / Lịch sử', icon: History, category: 'Báo Cáo & Hệ Thống' },
-  { id: 'reports', label: 'Báo cáo', icon: BarChart3, category: 'Báo Cáo & Hệ Thống' },
   { id: 'settings', label: 'Cài đặt & Dữ liệu', icon: Settings, category: 'Báo Cáo & Hệ Thống' },
   { id: 'users', label: 'Quản lý tài khoản', icon: Users, category: 'Báo Cáo & Hệ Thống' },
 ];

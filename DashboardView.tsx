@@ -1,5 +1,6 @@
 import React from 'react';
 import { Part, Transaction, ViewTab } from './types';
+import { storageService } from './storage';
 import {
   Package,
   Layers,
@@ -13,6 +14,7 @@ import {
   ChevronRight,
   TrendingDown,
   Clock,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 interface DashboardViewProps {
@@ -38,6 +40,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 7);
 
+  const handleExportExcel = () => {
+    storageService.exportPartsToExcel(parts, 'bao_cao_tong_hop_kho.xlsx');
+  };
+
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Banner Intro */}
@@ -49,17 +55,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center space-x-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            onClick={handleExportExcel}
+            className="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-black shadow-md transition-all cursor-pointer ring-2 ring-emerald-400/40"
+            title="Xuất danh sách tồn kho toàn bộ linh kiện ra file Excel"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Xuất Báo Cáo Excel</span>
+          </button>
           <button
             onClick={() => onNavigateTab('stock_in')}
-            className="flex items-center space-x-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
+            className="flex items-center space-x-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
           >
             <ArrowDownLeft className="w-4 h-4" />
             <span>Nhập Kho</span>
           </button>
           <button
             onClick={() => onNavigateTab('stock_out')}
-            className="flex items-center space-x-1.5 bg-white text-blue-900 hover:bg-blue-50 px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
+            className="flex items-center space-x-1.5 bg-white text-blue-900 hover:bg-blue-50 px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
           >
             <ArrowUpRight className="w-4 h-4" />
             <span>Xuất Kho</span>

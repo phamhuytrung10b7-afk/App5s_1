@@ -133,7 +133,9 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
 
   useEffect(() => {
     if (currentUser) {
-      setRequestedBy(`${currentUser.fullName} (${currentUser.roleTitle || currentUser.username})`);
+      const userStr = `${currentUser.fullName} (${currentUser.roleTitle || currentUser.username})`;
+      setRequestedBy(userStr);
+      setDelivererName(userStr);
     }
   }, [currentUser]);
 
@@ -263,9 +265,11 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
   };
 
   // Logistics deliver modal / confirm state
-  const [delivererName, setDelivererName] = useState(
-    (settings.staffList && settings.staffList[0]) || 'Lê Hoàng Nam (Thủ Kho Logistics)'
-  );
+  const defaultDeliverer = currentUser
+    ? `${currentUser.fullName} (${currentUser.roleTitle || currentUser.username})`
+    : (settings.staffList && settings.staffList[0]) || 'Lê Hoàng Nam (Thủ Kho Logistics)';
+
+  const [delivererName, setDelivererName] = useState(defaultDeliverer);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Get Kitting Queue items waiting for kitting (đã xuất kho thô, chờ bóc tách)
@@ -748,16 +752,25 @@ export const AndonCallView: React.FC<AndonCallViewProps> = ({
               <select
                 value={delivererName}
                 onChange={(e) => setDelivererName(e.target.value)}
-                className="px-3.5 py-1.5 bg-white border border-amber-300 rounded-xl font-bold text-slate-900 text-xs focus:ring-2 focus:ring-amber-500"
+                className="px-3.5 py-1.5 bg-white border border-amber-300 rounded-xl font-bold text-slate-900 text-xs focus:ring-2 focus:ring-amber-500 shadow-2xs"
               >
+                {currentUser && (
+                  <option value={`${currentUser.fullName} (${currentUser.roleTitle || currentUser.username})`}>
+                    {currentUser.fullName} ({currentUser.roleTitle || currentUser.username}) [Đang đăng nhập]
+                  </option>
+                )}
                 {settings.staffList && settings.staffList.length > 0 ? (
-                  settings.staffList.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))
+                  settings.staffList
+                    .filter((s) => !currentUser || !s.includes(currentUser.fullName))
+                    .map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))
                 ) : (
-                  <option value="Lê Hoàng Nam (Thủ Kho Logistics)">Lê Hoàng Nam (Thủ Kho Logistics)</option>
+                  !currentUser && (
+                    <option value="Lê Hoàng Nam (Thủ Kho Logistics)">Lê Hoàng Nam (Thủ Kho Logistics)</option>
+                  )
                 )}
               </select>
             </div>

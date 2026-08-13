@@ -97,7 +97,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: History,
     },
     { id: 'bin_card', label: 'Thẻ kho / Nhật ký LK', icon: ClipboardCheck, section: 'Báo Cáo & Quản Lý' },
-    { id: 'reports', label: 'Báo cáo', icon: BarChart3 },
     { id: 'settings', label: 'Cài đặt & Dữ liệu', icon: Settings },
     { id: 'users', label: 'Quản lý tài khoản', icon: Users },
   ];

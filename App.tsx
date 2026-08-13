@@ -17,7 +17,6 @@ import { BufferMapView } from './BufferMapView';
 import { AndonCallView } from './AndonCallView';
 import { BinCardHistoryView } from './BinCardHistoryView';
 import { WarehouseMapView } from './WarehouseMapView';
-import { ReportsView } from './ReportsView';
 import { SettingsView } from './SettingsView';
 import { UserManagementView } from './UserManagementView';
 import { LoginView } from './LoginView';
@@ -262,14 +261,6 @@ export default function App() {
               onUpdateSettings={setSettings}
               onOpenBinCard={handleOpenBinCard}
               onRefreshData={refreshData}
-            />
-          )}
-
-          {currentTab === 'reports' && (
-            <ReportsView
-              parts={parts}
-              transactions={transactions}
-              onOpenBinCard={handleOpenBinCard}
             />
           )}
 

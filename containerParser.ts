@@ -406,8 +406,8 @@ export function parseContainerExcel(
     const cleanCode = rawCode.replace(/[^a-zA-Z0-9]/g, '');
     const tagId = `TAG-${cleanCont}-${cleanCode}-${r}`;
 
-    // Build QR code embedded payload: CONT_IN|MãVT|SốLượng|SốCont|TagID|NgàyCont|Supplier|MfgDate
-    const qrPayload = `CONT_IN|${rawCode}|${quantity}|${contNumber}|${tagId}|${contDate}|${rawSupplier}|${rawMfgDate}`;
+    // Build QR code embedded payload (simplified without supplier & mfgDate for easier scanning): CONT_IN|MãVT|SốLượng|SốCont|TagID|NgàyCont
+    const qrPayload = `CONT_IN|${rawCode}|${quantity}|${contNumber}|${tagId}|${contDate}`;
 
     items.push({
       id: `cont-item-${r}-${Math.random().toString(36).substring(2, 6)}`,

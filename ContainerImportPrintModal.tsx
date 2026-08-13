@@ -176,7 +176,7 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
       const updatedItems = parseResult.items.map((item) => ({
         ...item,
         contNumber: newCont,
-        qrPayload: `CONT_IN|${item.code}|${item.quantity}|${newCont}|${item.tagId}|${item.contDate || contDate}|${item.supplier || ''}|${item.mfgDate || ''}`,
+        qrPayload: `CONT_IN|${item.code}|${item.quantity}|${newCont}|${item.tagId}|${item.contDate || contDate}`,
       }));
       setParseResult({
         ...parseResult,
@@ -192,7 +192,7 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
       const updatedItems = parseResult.items.map((item) => ({
         ...item,
         contDate: newDate,
-        qrPayload: `CONT_IN|${item.code}|${item.quantity}|${contNumber}|${item.tagId}|${newDate}|${item.supplier || ''}|${item.mfgDate || ''}`,
+        qrPayload: `CONT_IN|${item.code}|${item.quantity}|${contNumber}|${item.tagId}|${newDate}`,
       }));
       setParseResult({
         ...parseResult,
@@ -219,7 +219,7 @@ export const ContainerImportPrintModal: React.FC<ContainerImportPrintModalProps>
         matchedPart,
         isNewPart: !matchedPart,
         printCopies: tag.printCopies || 1,
-        qrPayload: tag.qrPayload || `CONT_IN|${tag.partCode}|${tag.quantity}|${batch.contNumber}|${tag.id}|${batch.contDate}|${tag.supplier || ''}|${tag.mfgDate || ''}`,
+        qrPayload: tag.qrPayload || `CONT_IN|${tag.partCode}|${tag.quantity}|${batch.contNumber}|${tag.id}|${batch.contDate}`,
       };
     });
 

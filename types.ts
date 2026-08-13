@@ -173,9 +173,9 @@ export interface ContainerQrTag {
   quantity: number;
   contNumber: string;
   contDate: string;
-  supplier?: string; // Nhà cung cấp
-  mfgDate?: string; // Ngày sản xuất
-  qrPayload: string; // CONT_IN|MãVT|SL|MãCont|TagID|NgàyCont|Supplier|MfgDate
+  supplier?: string; // Nhà cung cấp (hiển thị trên nhãn tem in, không cần nằm trong mã QR)
+  mfgDate?: string; // Ngày sản xuất (hiển thị trên nhãn tem in, không cần nằm trong mã QR)
+  qrPayload: string; // CONT_IN|MãVT|SL|MãCont|TagID|NgàyCont
   printCopies: number;
   isUsed?: boolean;
   importedQuantity?: number;

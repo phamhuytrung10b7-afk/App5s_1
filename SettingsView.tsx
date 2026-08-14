@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AppSettings } from './types';
 import { storageService } from './storage';
+import { ConversionFactorManager } from './ConversionFactorManager';
 import {
   Settings,
   Building2,
@@ -16,6 +17,8 @@ import {
   Trash2,
   Database,
   Truck,
+  Calculator,
+  MapPin,
 } from 'lucide-react';
 
 interface SettingsViewProps {
@@ -52,7 +55,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [newAssemblyLine, setNewAssemblyLine] = useState('');
 
   const [message, setMessage] = useState<{ type: string; text: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<'general' | 'warehouse_map'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'conversion' | 'warehouse_map'>('general');
   const [locations, setLocations] = useState<{id: string; name: string; description?: string;}[]>(settings.locations || []);
   const [newLocationName, setNewLocationName] = useState('');
   const [newLocationDesc, setNewLocationDesc] = useState('');
@@ -237,7 +240,53 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       )}
 
-      {/* Warehouse Header Config Form */}
+      {/* Subtab Navigation Bar */}
+      <div className="flex border-b border-slate-200 space-x-2 bg-slate-100/80 p-1.5 rounded-2xl">
+        <button
+          type="button"
+          onClick={() => setActiveTab('general')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+            activeTab === 'general'
+              ? 'bg-white text-slate-900 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <Settings className="w-4 h-4 text-blue-600" />
+          <span>Cài Đặt Chung</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('conversion')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+            activeTab === 'conversion'
+              ? 'bg-white text-slate-900 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <Calculator className="w-4 h-4 text-emerald-600" />
+          <span>Cấu Hình Hệ Số Quy Đổi (HSQĐ)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('warehouse_map')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+            activeTab === 'warehouse_map'
+              ? 'bg-white text-slate-900 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+          }`}
+        >
+          <MapPin className="w-4 h-4 text-purple-600" />
+          <span>Sơ Đồ Vị Trí Kệ Kho</span>
+        </button>
+      </div>
+
+      {activeTab === 'conversion' && <ConversionFactorManager />}
+
+      {activeTab === 'general' && (
+        <div className="space-y-6">
+          {/* Warehouse Header Config Form */}
       <form onSubmit={handleSaveSettings} className="space-y-6">
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-5">
           <h3 className="font-bold text-slate-800 text-sm flex items-center">
@@ -743,7 +792,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
       )}
-
+        </div>
+      )}
 
       {activeTab === 'warehouse_map' && (
         <div className="space-y-6">

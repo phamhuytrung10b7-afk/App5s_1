@@ -4,6 +4,7 @@ import { storageService } from './storage';
 import { MasterKittingTag } from './masterExcelParser';
 import { PART_GROUP_COLORS, getPartGroupConfig } from './partGroupColors';
 import { ContainerTagManagerModal } from './ContainerTagManagerModal';
+import { CustomTagManagerModal } from './CustomTagManagerModal';
 import { InlineQrScanner } from './InlineQrScanner';
 import {
   Scissors,
@@ -41,6 +42,7 @@ export const KittingView: React.FC<KittingViewProps> = ({
   const [activeTab, setActiveTab] = useState<'smart_scan' | 'pending' | 'history'>('smart_scan');
   const [selectedItem, setSelectedItem] = useState<KittingQueueItem | null>(null);
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
+  const [isCustomTagManagerOpen, setIsCustomTagManagerOpen] = useState(false);
 
   // Current Logged in User name
   const currentUser = storageService.getCurrentUser();
@@ -434,6 +436,38 @@ export const KittingView: React.FC<KittingViewProps> = ({
         }
       }
 
+      // Always log scan event for productivity reporting when items are pushed to OUTBUFFER shelf
+      storageService.addKittingScanLog({
+        partCode,
+        partName: partName || partCode,
+        unit: unit || 'Cái',
+        quantity: actualQty,
+        timestamp: new Date().toISOString(),
+        bufferLocation: finalBuffer,
+        operatorName: operator,
+      });
+
+      // AUTO GENERATE & SAVE SEPARATE CUSTOM CONTAINER TAG IF QTY / SPEC DIFFERS
+      if (actualQty !== standardQty || isQtyDifference || !scannedTag) {
+        const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        const grpCfg = getPartGroupConfig(groupName || partName);
+        storageService.addCustomGeneratedContainerTag({
+          id: `custom-kitting-${Date.now()}`,
+          stt: `Số ${timeStr}`,
+          partCode: partCode.trim().toUpperCase(),
+          partName: partName || `Linh kiện ${partCode.trim()}`,
+          standardQty: actualQty,
+          unit: unit || 'cái/bộ',
+          groupName: grpCfg.name,
+          ccdcSpec: ccdcSpec || `Phát sinh tùy chỉnh (${actualQty} ${unit || 'cái/bộ'})`,
+          groupConfig: grpCfg,
+          qrPayload: `CONT_IN|${partCode.trim()}|${actualQty}|${unit || 'cái/bộ'}|${grpCfg.id}`,
+          createdAt: new Date().toISOString(),
+          createdReason: exceptionReason || `Bóc tách phát sinh khác quy cách chuẩn (${standardQty})`,
+          isCustomGenerated: true,
+        });
+      }
+
       const overrideNote = isQtyDifference ? ` (Ghi đè: ${exceptionReason})` : '';
 
       // Show PROMINENT SUCCESS RESULT MODAL (OK)
@@ -548,14 +582,23 @@ export const KittingView: React.FC<KittingViewProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setIsTagManagerOpen(true)}
-              className="px-4 py-2.5 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs sm:text-sm rounded-2xl shadow-lg transition-all cursor-pointer flex items-center space-x-2"
+              className="px-3.5 py-2.5 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs rounded-2xl shadow-lg transition-all cursor-pointer flex items-center space-x-1.5"
             >
               <Tag className="w-4 h-4" />
-              <span>Quản Lý & In Thẻ Thùng ({masterTags.length})</span>
+              <span>Thẻ Thùng Master Data ({masterTags.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsCustomTagManagerOpen(true)}
+              className="px-3.5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs rounded-2xl shadow-lg transition-all cursor-pointer flex items-center space-x-1.5 border border-purple-400/30"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              <span>Thẻ Thùng Phát Sinh (Tùy Chỉnh)</span>
             </button>
           </div>
         </div>
@@ -1171,6 +1214,16 @@ export const KittingView: React.FC<KittingViewProps> = ({
       <ContainerTagManagerModal
         isOpen={isTagManagerOpen}
         onClose={() => setIsTagManagerOpen(false)}
+        onSelectTagForKitting={(tag) => {
+          handleProcessTagSelection(tag);
+          setActiveTab('smart_scan');
+        }}
+      />
+
+      {/* Custom Tag Manager Modal */}
+      <CustomTagManagerModal
+        isOpen={isCustomTagManagerOpen}
+        onClose={() => setIsCustomTagManagerOpen(false)}
         onSelectTagForKitting={(tag) => {
           handleProcessTagSelection(tag);
           setActiveTab('smart_scan');

@@ -703,19 +703,21 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                 <div
                   style={{
                     display: 'inline-block',
-                    padding: '1px',
-                    backgroundColor: '#fff',
-                    border: '1px solid #000',
+                    padding: '1px 3px',
+                    backgroundColor: '#eff6ff',
+                    border: '1px dashed #2563eb',
                     borderRadius: '2px',
-                    lineHeight: 0,
+                    textAlign: 'center',
+                    lineHeight: 1.1,
                   }}
                 >
-                  <QRCodeSVG
-                    value={tag.qrPayload}
-                    size={32}
-                    level="M"
-                    includeMargin={false}
-                  />
+                  <span style={{ fontSize: '9px', fontWeight: 900, color: '#1e40af' }}>
+                    MẶT SAU
+                  </span>
+                  <br />
+                  <span style={{ fontSize: '7.5px', fontWeight: 'bold', color: '#2563eb' }}>
+                    (QR 30x30mm)
+                  </span>
                 </div>
               </td>
               <td
@@ -776,6 +778,134 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
         </div>
       </div>
     );
+  };
+
+  // Render Back Tag Card (Mặt Sau 90mm x 60mm with 30x30mm QR code centered)
+  const renderTagCardBack = (tag: MasterKittingTag | null, copyIndex?: number) => {
+    if (!tag) {
+      return (
+        <div
+          key={`empty-back-${Math.random()}`}
+          style={{
+            width: '90mm',
+            height: '60mm',
+            maxWidth: '90mm',
+            maxHeight: '60mm',
+            boxSizing: 'border-box',
+            border: '1.5px dashed #cbd5e1',
+            backgroundColor: '#ffffff',
+          }}
+        />
+      );
+    }
+
+    return (
+      <div
+        key={`back-${tag.id}-${copyIndex ?? 0}`}
+        className="tag-card-back"
+        style={{
+          width: '90mm',
+          height: '60mm',
+          maxWidth: '90mm',
+          maxHeight: '60mm',
+          boxSizing: 'border-box',
+          border: '1.5px solid #000',
+          padding: '2.5mm',
+          backgroundColor: '#ffffff',
+          color: '#000000',
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          position: 'relative',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textAlign: 'center',
+          pageBreakInside: 'avoid',
+          breakInside: 'avoid',
+        }}
+      >
+        <div
+          style={{
+            fontWeight: 900,
+            fontSize: '11px',
+            color: '#000',
+            maxWidth: '84mm',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            textTransform: 'uppercase',
+            marginBottom: '1px',
+          }}
+          title={tag.partName}
+        >
+          {tag.partName}
+        </div>
+
+        <div
+          style={{
+            fontFamily: 'monospace',
+            fontWeight: 900,
+            fontSize: '11px',
+            color: '#000',
+            letterSpacing: '0.3px',
+            marginBottom: '1.5mm',
+          }}
+        >
+          MÃ LINH KIỆN: {tag.partCode}
+        </div>
+
+        <div
+          style={{
+            width: '30mm',
+            height: '30mm',
+            border: '1px solid #000',
+            padding: '1mm',
+            backgroundColor: '#fff',
+            borderRadius: '2px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxSizing: 'border-box',
+          }}
+        >
+          <QRCodeSVG
+            value={tag.qrPayload}
+            size={106}
+            style={{ width: '28mm', height: '28mm' }}
+            level="M"
+            includeMargin={false}
+          />
+        </div>
+
+        <div
+          style={{
+            fontFamily: 'monospace',
+            fontSize: '8px',
+            fontWeight: 'bold',
+            color: '#000',
+            marginTop: '1.5mm',
+            letterSpacing: '-0.2px',
+          }}
+        >
+          MÃ QR THẺ THÙNG KITTING (IN 2 MẶT A4)
+        </div>
+      </div>
+    );
+  };
+
+  // Mirrored Back Page helper for duplex printing
+  const getMirroredBackCards = (frontCards: MasterKittingTag[]): (MasterKittingTag | null)[] => {
+    const backCards: (MasterKittingTag | null)[] = new Array(8).fill(null);
+    for (let r = 0; r < 4; r++) {
+      const frontLeft = frontCards[r * 2 + 0] || null;
+      const frontRight = frontCards[r * 2 + 1] || null;
+
+      // Duplex horizontal flip alignment: Left on front = Right on back
+      backCards[r * 2 + 0] = frontRight;
+      backCards[r * 2 + 1] = frontLeft;
+    }
+    return backCards;
   };
 
   return (
@@ -1244,38 +1374,72 @@ export const ContainerTagManagerModal: React.FC<ContainerTagManagerModalProps> =
                       Chưa chọn thẻ nào để hiển thị xem trước mẫu in A4!
                     </div>
                   ) : (
-                    a4Pages.map((pageCards, pageIdx) => (
-                      <div key={pageIdx} className="max-w-[210mm] mx-auto space-y-2">
-                        {/* A4 Sheet Label Header (Screen Only) */}
-                        <div className="flex items-center justify-between text-xs font-bold text-slate-600 px-2 print:hidden">
-                          <span className="flex items-center space-x-2">
-                            <span className="px-2 py-0.5 bg-blue-900 text-white rounded font-mono text-[11px]">
-                              TRANG A4 #{pageIdx + 1}
-                            </span>
-                            <span>Chứa {pageCards.length} / 8 Thẻ (90mm x 60mm)</span>
-                          </span>
-                          <span className="text-slate-400 text-[11px]">Khổ A4 Portrait (210mm x 297mm)</span>
-                        </div>
+                    a4Pages.map((pageCards, pageIdx) => {
+                      const backPageCards = getMirroredBackCards(pageCards);
+                      return (
+                        <div key={pageIdx} className="max-w-[210mm] mx-auto space-y-6">
+                          {/* FRONT PAGE SHEET */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs font-bold text-slate-700 px-2 print:hidden">
+                              <span className="flex items-center space-x-2">
+                                <span className="px-2.5 py-0.5 bg-blue-900 text-white rounded font-mono text-[11px]">
+                                  MẶT TRƯỚC - TRANG A4 #{pageIdx * 2 + 1}
+                                </span>
+                                <span>Phiếu Thông Tin (Chứa {pageCards.length} Thẻ)</span>
+                              </span>
+                              <span className="text-slate-500 text-[11px]">Khổ A4 Portrait (90mm x 60mm)</span>
+                            </div>
 
-                        {/* A4 Page Container */}
-                        <div
-                          className="a4-page bg-white p-4 shadow-xl rounded-xl border border-slate-300 mx-auto"
-                          style={{
-                            width: '190mm',
-                            minHeight: '270mm',
-                            boxSizing: 'border-box',
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(2, 90mm)',
-                            gridAutoRows: '60mm',
-                            gap: '4mm 8mm',
-                            justifyContent: 'center',
-                            alignContent: 'start',
-                          }}
-                        >
-                          {pageCards.map((tag, cardIdx) => renderTagCard(tag, pageIdx * 8 + cardIdx))}
+                            <div
+                              className="a4-page bg-white p-4 shadow-xl rounded-xl border border-slate-300 mx-auto"
+                              style={{
+                                width: '190mm',
+                                minHeight: '270mm',
+                                boxSizing: 'border-box',
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(2, 90mm)',
+                                gridAutoRows: '60mm',
+                                gap: '4mm 8mm',
+                                justifyHorizontal: 'center',
+                                alignContent: 'start',
+                              }}
+                            >
+                              {pageCards.map((tag, cardIdx) => renderTagCard(tag, pageIdx * 8 + cardIdx))}
+                            </div>
+                          </div>
+
+                          {/* BACK PAGE SHEET */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs font-bold text-purple-900 px-2 print:hidden">
+                              <span className="flex items-center space-x-2">
+                                <span className="px-2.5 py-0.5 bg-purple-900 text-white rounded font-mono text-[11px]">
+                                  MẶT SAU - TRANG A4 #{pageIdx * 2 + 2} (MÃ QR 30x30mm)
+                                </span>
+                                <span>Căn lật ngang khớp vị trí thẻ mặt trước</span>
+                              </span>
+                              <span className="text-purple-700 text-[11px]">Duplex Mirror Alignment</span>
+                            </div>
+
+                            <div
+                              className="a4-page bg-white p-4 shadow-xl rounded-xl border border-purple-300 mx-auto"
+                              style={{
+                                width: '190mm',
+                                minHeight: '270mm',
+                                boxSizing: 'border-box',
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(2, 90mm)',
+                                gridAutoRows: '60mm',
+                                gap: '4mm 8mm',
+                                justifyHorizontal: 'center',
+                                alignContent: 'start',
+                              }}
+                            >
+                              {backPageCards.map((tag, cardIdx) => renderTagCardBack(tag, pageIdx * 8 + cardIdx))}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>

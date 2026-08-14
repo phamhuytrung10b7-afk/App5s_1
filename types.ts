@@ -240,14 +240,56 @@ export interface BomExportVoucherItem {
 }
 
 export interface BomExportVoucher {
-  id: string; // e.g. "vxk-1721000..."
-  voucherCode: string; // e.g. "PXK-BOM-20260806-001"
-  modelName: string;
-  modelQty: number;
-  createdAt: string; // ISO timestamp
-  dateTime: string;
-  person: string;
+  id: string;
+  voucherCode: string;
+  exportDate?: string;
+  lsxCode?: string;
+  assemblyLine?: string;
+  totalSets?: number;
   items: BomExportVoucherItem[];
-  totalPartsCount: number;
-  totalQtyOut: number;
+  createdByName?: string;
+  createdAt: string;
+  modelName?: string;
+  modelQty?: number;
+  dateTime?: string;
+  person?: string;
+  totalPartsCount?: number;
+  totalQtyOut?: number;
 }
+
+export interface ConversionFactor {
+  partCode: string;
+  partName: string;
+  hsqd: number; // Hệ số quy đổi (e.g. 1.00, 3.98, 1.14...)
+  updatedAt?: string;
+}
+
+export interface KittingScanLog {
+  id: string;
+  partCode: string;
+  partName: string;
+  unit: string;
+  quantity: number;
+  timestamp: string; // ISO string
+  bufferLocation: string;
+  operatorName?: string;
+}
+
+export interface HourlyPersonnelSlot {
+  slot: string; // e.g. "8h-9h"
+  nsChinhThuc: number;
+  nsThoiVu: number;
+  nhanSuMoiGio: number; // nsChinhThuc + nsThoiVu
+}
+
+export interface ProductivityPersonnelConfig {
+  chinhThuc: number;
+  soanVatTu: number;
+  bocTach: number;
+  bocXep: number;
+  xeNang: number;
+  capPhat: number;
+  hourlySlots: HourlyPersonnelSlot[];
+  khsxMap?: { [partCode: string]: number };
+}
+

@@ -1,4 +1,4 @@
-import { Part, PartLocationStock, Transaction, StockCheckRecord, AppSettings, ContainerBatch, ContainerQrTag, FifoLot, ModelBOM, ModelBOMItem, KittingQueueItem, BufferLocationMap, BufferPartItem, MaterialCallRequest, BomExportVoucher, BomExportVoucherItem, UserAccount, ViewTab } from './types';
+import { Part, PartLocationStock, Transaction, StockCheckRecord, AppSettings, ContainerBatch, ContainerQrTag, FifoLot, ModelBOM, ModelBOMItem, KittingQueueItem, BufferLocationMap, BufferPartItem, MaterialCallRequest, BomExportVoucher, BomExportVoucherItem, UserAccount, ViewTab, ConversionFactor, KittingScanLog, ProductivityPersonnelConfig, HourlyPersonnelSlot } from './types';
 import { initialParts, initialTransactions, initialSettings } from './sampleData';
 import { MasterKittingTag, SAMPLE_MASTER_TAGS } from './masterExcelParser';
 import * as XLSX from 'xlsx';
@@ -15,6 +15,67 @@ const BUFFER_MAP_KEY = 'thekho_buffer_map_v1';
 const MATERIAL_CALLS_KEY = 'thekho_material_calls_v1';
 const BOM_VOUCHERS_KEY = 'thekho_bom_vouchers_v1';
 const MASTER_CONTAINER_TAGS_KEY = 'thekho_master_container_tags_v1';
+const CONVERSION_FACTORS_KEY = 'thekho_conversion_factors_v1';
+const KITTING_SCAN_LOGS_KEY = 'thekho_kitting_scan_logs_v1';
+const PRODUCTIVITY_PERSONNEL_CONFIG_KEY = 'thekho_productivity_personnel_config_v1';
+const CUSTOM_GENERATED_CONTAINER_TAGS_KEY = 'thekho_custom_generated_container_tags_v1';
+
+export interface CustomGeneratedContainerTag extends MasterKittingTag {
+  createdAt: string;
+  createdReason?: string;
+  isCustomGenerated?: boolean;
+}
+
+export const DEFAULT_CONVERSION_FACTORS: ConversionFactor[] = [
+  { partCode: '04-29-00-SHA76219CK-0002', partName: 'Lõi lọc Mineral + nối nhanh (TC)', hsqd: 1.00 },
+  { partCode: '04-28-03-BRA590N-0006', partName: 'Bình áp HK TANK Model 3.2G', hsqd: 3.98 },
+  { partCode: '04-28-00-SHA88113K-0001', partName: 'Màng R.O TFC 100GPD', hsqd: 1.14 },
+  { partCode: '04-28-00-SHA8839K-0009', partName: 'Lõi fa infrared nối nhanh (TC)', hsqd: 1.00 },
+  { partCode: '04-29-00-SHA76219CK-0000', partName: 'Lõi lọc Nano silver nối nhanh (TC)', hsqd: 1.00 },
+  { partCode: '04-29-00-SHA76219CK-0001', partName: 'Lõi lọc Active carbon nối nhanh (TC)', hsqd: 1.00 },
+  { partCode: '04-29-00-SHA76219CK-0003', partName: 'Lõi lọc Alkaline nối nhanh (TC)', hsqd: 1.00 },
+  { partCode: '04-29-00-SHA76219CK-0004', partName: 'Lõi lọc Hydrogen nối nhanh (TC)', hsqd: 1.00 },
+  { partCode: '04-29-00-SHA76219CK-0005', partName: 'Lõi lọc Bio ceramic nối nhanh (TC)', hsqd: 1.00 },
+  { partCode: '04-29-00-SHA76639LA-0000', partName: 'Lõi lọc Hydrogen ion kiềm nối nhanh (TC)', hsqd: 1.00 },
+  { partCode: '04-29-00-SHA76639LA-0001', partName: 'Lõi lọc SUNHOUSE số 1 - 5micron (UltraX)', hsqd: 1.54 },
+  { partCode: '04-29-00-SHA76639LA-0002', partName: 'Lõi lọc SUNHOUSE số 2 - GAC (UltraX)', hsqd: 1.54 },
+  { partCode: '04-29-00-SHA76639LA-0003', partName: 'Lõi lọc SUNHOUSE số 3 - 1micron (UltraX)', hsqd: 1.54 },
+  { partCode: '04-29-00-SHA76688SH-0000', partName: 'Van điện từ nối nhanh', hsqd: 0.38 },
+  { partCode: '04-29-00-VOI-0001', partName: 'Vòi lấy nước NL cổ vuông (CT)', hsqd: 0.59 },
+  { partCode: '04-29-00-VOMANG-0002', partName: 'Vỏ màng R.O (cắm nhanh)', hsqd: 1.13 },
+  { partCode: '04-29-00-ADAPTER-0003', partName: 'Adapter NS2415V3C', hsqd: 1.15 },
+  { partCode: '04-29-00-BAUNONG-0004', partName: 'Bầu nóng 1.5L', hsqd: 1.04 },
+  { partCode: '04-29-00-BLOCK-0005', partName: 'Block ASV25H', hsqd: 2.93 },
+  { partCode: '04-29-00-CANG-0001', partName: 'Càng cua đơn (to)', hsqd: 0.08 },
+  { partCode: '04-29-00-CANG-0002', partName: 'Càng cua đơn (nhỏ)', hsqd: 0.08 },
+  { partCode: '04-29-00-CANG-0003', partName: 'Càng cua đôi to-to', hsqd: 0.10 },
+  { partCode: '04-29-00-BOM-0001', partName: 'Bơm tăng áp GFP-75K', hsqd: 1.90 },
+  { partCode: '04-29-00-BINHLANH-0001', partName: 'Cụm bình lạnh 2L (CT)', hsqd: 1.03 },
+  { partCode: '04-29-00-COC-0001', partName: 'Bộ cốc lọc thô màu trong xanh SH', hsqd: 4.45 },
+  { partCode: '04-29-00-COC-0002', partName: 'Bộ cốc lọc thô màu trắng NN', hsqd: 4.45 },
+];
+
+export const DEFAULT_PRODUCTIVITY_PERSONNEL_CONFIG: ProductivityPersonnelConfig = {
+  chinhThuc: 10,
+  soanVatTu: 2,
+  bocTach: 1,
+  bocXep: 3,
+  xeNang: 2,
+  capPhat: 2,
+  hourlySlots: [
+    { slot: '8h-9h', nsChinhThuc: 1, nsThoiVu: 2, nhanSuMoiGio: 3 },
+    { slot: '9h-10h', nsChinhThuc: 1, nsThoiVu: 2, nhanSuMoiGio: 3 },
+    { slot: '10h-11h', nsChinhThuc: 1, nsThoiVu: 2, nhanSuMoiGio: 3 },
+    { slot: '11h-12h', nsChinhThuc: 1, nsThoiVu: 2, nhanSuMoiGio: 3 },
+    { slot: '13h-14h', nsChinhThuc: 1, nsThoiVu: 2, nhanSuMoiGio: 3 },
+    { slot: '14h-15h', nsChinhThuc: 1, nsThoiVu: 2, nhanSuMoiGio: 3 },
+    { slot: '15h-16h', nsChinhThuc: 1, nsThoiVu: 1, nhanSuMoiGio: 2 },
+    { slot: '16h-17h', nsChinhThuc: 1, nsThoiVu: 1, nhanSuMoiGio: 2 },
+    { slot: '17h-18h', nsChinhThuc: 0, nsThoiVu: 0, nhanSuMoiGio: 0 },
+    { slot: '18h-19h', nsChinhThuc: 0, nsThoiVu: 0, nhanSuMoiGio: 0 },
+    { slot: '19h-20h', nsChinhThuc: 0, nsThoiVu: 0, nhanSuMoiGio: 0 },
+  ],
+};
 
 const DEFAULT_BUFFER_LOCATIONS: BufferLocationMap[] = [
   {
@@ -2018,6 +2079,118 @@ export const storageService = {
     localStorage.setItem(MASTER_CONTAINER_TAGS_KEY, JSON.stringify(SAMPLE_MASTER_TAGS));
     return SAMPLE_MASTER_TAGS;
   },
+
+  // --- CONVERSION FACTORS (HỆ SỐ QUY ĐỔI) ---
+  getConversionFactors(): ConversionFactor[] {
+    const raw = localStorage.getItem(CONVERSION_FACTORS_KEY);
+    if (!raw) {
+      localStorage.setItem(CONVERSION_FACTORS_KEY, JSON.stringify(DEFAULT_CONVERSION_FACTORS));
+      return DEFAULT_CONVERSION_FACTORS;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      return DEFAULT_CONVERSION_FACTORS;
+    } catch {
+      return DEFAULT_CONVERSION_FACTORS;
+    }
+  },
+
+  saveConversionFactors(factors: ConversionFactor[]): void {
+    localStorage.setItem(CONVERSION_FACTORS_KEY, JSON.stringify(factors));
+  },
+
+  getConversionFactorForPart(partCode: string): number {
+    const list = this.getConversionFactors();
+    const found = list.find(f => f.partCode.trim().toLowerCase() === partCode.trim().toLowerCase());
+    return found ? found.hsqd : 1.0;
+  },
+
+  // --- KITTING SCAN LOGS (Ghi nhận quét bóc tách lên OUTBUFFER - Lưu tối đa 35 ngày) ---
+  getKittingScanLogs(): KittingScanLog[] {
+    const raw = localStorage.getItem(KITTING_SCAN_LOGS_KEY);
+    if (!raw) return [];
+    try {
+      const logs: KittingScanLog[] = JSON.parse(raw);
+      if (!Array.isArray(logs)) return [];
+
+      const thirtyFiveDaysAgo = new Date();
+      thirtyFiveDaysAgo.setDate(thirtyFiveDaysAgo.getDate() - 35);
+      const cutoffMs = thirtyFiveDaysAgo.getTime();
+
+      const validLogs = logs.filter((log) => {
+        const logTime = new Date(log.timestamp).getTime();
+        return !isNaN(logTime) && logTime >= cutoffMs;
+      });
+
+      if (validLogs.length !== logs.length) {
+        localStorage.setItem(KITTING_SCAN_LOGS_KEY, JSON.stringify(validLogs));
+      }
+      return validLogs;
+    } catch {
+      return [];
+    }
+  },
+
+  addKittingScanLog(log: Omit<KittingScanLog, 'id'>): KittingScanLog {
+    const logs = this.getKittingScanLogs();
+    const newLog: KittingScanLog = {
+      ...log,
+      id: 'scan-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+    };
+    logs.unshift(newLog);
+    localStorage.setItem(KITTING_SCAN_LOGS_KEY, JSON.stringify(logs));
+    return newLog;
+  },
+
+  // --- PRODUCTIVITY PERSONNEL CONFIG (Lưu gợi ý thông số điền tay) ---
+  getProductivityPersonnelConfig(): ProductivityPersonnelConfig {
+    const raw = localStorage.getItem(PRODUCTIVITY_PERSONNEL_CONFIG_KEY);
+    if (!raw) {
+      localStorage.setItem(PRODUCTIVITY_PERSONNEL_CONFIG_KEY, JSON.stringify(DEFAULT_PRODUCTIVITY_PERSONNEL_CONFIG));
+      return DEFAULT_PRODUCTIVITY_PERSONNEL_CONFIG;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return DEFAULT_PRODUCTIVITY_PERSONNEL_CONFIG;
+    }
+  },
+
+  saveProductivityPersonnelConfig(config: ProductivityPersonnelConfig): void {
+    localStorage.setItem(PRODUCTIVITY_PERSONNEL_CONFIG_KEY, JSON.stringify(config));
+  },
+
+  // --- CUSTOM GENERATED CONTAINER TAGS (Lưu vị trí riêng biệt với Thẻ Master Data) ---
+  getCustomGeneratedContainerTags(): CustomGeneratedContainerTag[] {
+    const raw = localStorage.getItem(CUSTOM_GENERATED_CONTAINER_TAGS_KEY);
+    if (!raw) return [];
+    try {
+      const list = JSON.parse(raw);
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [];
+    }
+  },
+
+  saveCustomGeneratedContainerTags(tags: CustomGeneratedContainerTag[]): void {
+    localStorage.setItem(CUSTOM_GENERATED_CONTAINER_TAGS_KEY, JSON.stringify(tags));
+  },
+
+  addCustomGeneratedContainerTag(tag: CustomGeneratedContainerTag): void {
+    const existing = this.getCustomGeneratedContainerTags();
+    // Avoid duplicate if id exists
+    const filtered = existing.filter((t) => t.id !== tag.id);
+    filtered.unshift(tag);
+    this.saveCustomGeneratedContainerTags(filtered);
+  },
+
+  deleteCustomGeneratedContainerTag(id: string): void {
+    const existing = this.getCustomGeneratedContainerTags();
+    const updated = existing.filter((t) => t.id !== id);
+    this.saveCustomGeneratedContainerTags(updated);
+  },
 };
+
 
 

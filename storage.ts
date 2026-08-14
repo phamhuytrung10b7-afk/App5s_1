@@ -874,24 +874,68 @@ export const storageService = {
 
   // Excel Utilities
   exportPartsToExcel(parts: Part[], fileName = 'danh_sach_linh_kien.xlsx'): void {
-    const excelData = parts.map((p, index) => ({
-      'STT': index + 1,
-      'Mã Linh Kiện': p.code,
-      'Tên Linh Kiện': p.name,
-      'Vị Trí Lưu': p.location,
-      'Đơn Vị': p.unit,
-      'Tồn Hiện Tại': p.currentStock,
-      'Tồn Tối Thiểu': p.minStock,
-      'Trạng Thái':
-        p.currentStock === 0
-          ? 'Hết hàng'
-          : p.currentStock <= p.minStock
-          ? 'Sắp hết'
-          : 'An toàn',
-      'Mô Tả': p.description || '',
-      'Mã Vạch Barcode': p.barcode || '',
-      'Ghi Chú': p.note || '',
-    }));
+    const nowMs = Date.now();
+
+    const excelData = parts.map((p, index) => {
+      let under3Months = 0;
+      let from3To6Months = 0;
+      let over6Months = 0;
+
+      if (p.currentStock > 0) {
+        const fifoLots = this.getPartFifoLots(p.id);
+        fifoLots.forEach((lot) => {
+          if (lot.remainingQty > 0) {
+            const lotDate = lot.importDate ? new Date(lot.importDate).getTime() : nowMs;
+            const diffDays = (nowMs - lotDate) / (1000 * 60 * 60 * 24);
+
+            if (diffDays < 90) {
+              under3Months += lot.remainingQty;
+            } else if (diffDays < 180) {
+              from3To6Months += lot.remainingQty;
+            } else {
+              over6Months += lot.remainingQty;
+            }
+          }
+        });
+
+        // Safety fallback if sum of lots is less than currentStock
+        const allocated = under3Months + from3To6Months + over6Months;
+        if (allocated < p.currentStock) {
+          const unallocated = p.currentStock - allocated;
+          const partCreatedDate = p.createdAt ? new Date(p.createdAt).getTime() : nowMs;
+          const diffDays = (nowMs - partCreatedDate) / (1000 * 60 * 60 * 24);
+          if (diffDays < 90) {
+            under3Months += unallocated;
+          } else if (diffDays < 180) {
+            from3To6Months += unallocated;
+          } else {
+            over6Months += unallocated;
+          }
+        }
+      }
+
+      return {
+        'STT': index + 1,
+        'Mã Linh Kiện': p.code,
+        'Tên Linh Kiện': p.name,
+        'Vị Trí Lưu': p.location,
+        'Đơn Vị': p.unit,
+        'Tồn Hiện Tại': p.currentStock,
+        'Tồn Tối Thiểu': p.minStock,
+        'Trạng Thái':
+          p.currentStock === 0
+            ? 'Hết hàng'
+            : p.currentStock <= p.minStock
+            ? 'Sắp hết'
+            : 'An toàn',
+        'Mô Tả': p.description || '',
+        'Tồn dưới 3 tháng': under3Months,
+        'Tồn trên 3 tháng dưới 6 tháng': from3To6Months,
+        'Tồn trên 6 tháng': over6Months,
+        'Mã Vạch Barcode': p.barcode || '',
+        'Ghi Chú': p.note || '',
+      };
+    });
 
     const worksheet = XLSX.utils.json_to_sheet(excelData);
     const workbook = XLSX.utils.book_new();
@@ -899,17 +943,20 @@ export const storageService = {
 
     // Auto col width
     const colWidths = [
-      { wch: 5 },
-      { wch: 20 },
-      { wch: 35 },
-      { wch: 18 },
-      { wch: 10 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 30 },
-      { wch: 15 },
-      { wch: 25 },
+      { wch: 5 },  // STT
+      { wch: 20 }, // Mã Linh Kiện
+      { wch: 35 }, // Tên Linh Kiện
+      { wch: 18 }, // Vị Trí Lưu
+      { wch: 10 }, // Đơn Vị
+      { wch: 12 }, // Tồn Hiện Tại
+      { wch: 12 }, // Tồn Tối Thiểu
+      { wch: 12 }, // Trạng Thái
+      { wch: 30 }, // Mô Tả
+      { wch: 18 }, // Tồn dưới 3 tháng
+      { wch: 28 }, // Tồn trên 3 tháng dưới 6 tháng
+      { wch: 18 }, // Tồn trên 6 tháng
+      { wch: 20 }, // Mã Vạch Barcode
+      { wch: 25 }, // Ghi Chú
     ];
     worksheet['!cols'] = colWidths;
 

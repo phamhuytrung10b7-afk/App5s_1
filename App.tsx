@@ -250,6 +250,7 @@ export default function App() {
             <BinCardHistoryView
               parts={parts}
               transactions={transactions}
+              settings={settings}
               onOpenBinCard={handleOpenBinCard}
             />
           )}

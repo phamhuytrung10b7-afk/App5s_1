@@ -1004,6 +1004,30 @@ export const storageService = {
     XLSX.writeFile(wb, cleanFileName);
   },
 
+  exportBinCardHistoryToExcel(transactions: Transaction[], fileName = 'nhat_ky_the_kho_dien_tu.xlsx'): void {
+    const excelData = transactions.map((t, idx) => ({
+      'STT': idx + 1,
+      'Thời Gian': new Date(t.date).toLocaleString('vi-VN'),
+      'Loại': t.type === 'IN' ? 'NHẬP KHO' : t.type === 'OUT' ? 'XUẤT KHO' : 'KIỂM KÊ',
+      'Mã Linh Kiện': t.partCode,
+      'Tên Linh Kiện': t.partName,
+      'Số Lượng Nhập (+)': t.type === 'IN' ? t.quantity : '',
+      'Số Lượng Xuất (-)': t.type === 'OUT' ? t.quantity : '',
+      'Tồn Sau Giao Dịch': t.stockAfter,
+      'Đơn Vị': t.unit,
+      'Kệ / Vị Trí': t.locationId || '',
+      'Người Thực Hiện': t.person || '',
+      'Lệnh Sản Xuất': t.productionOrder || '',
+      'Diễn Giải / Mục Đích': t.reasonOrPurpose || '',
+      'Ghi Chú': t.notes || '',
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Nhật Ký Thẻ Kho');
+    XLSX.writeFile(wb, fileName);
+  },
+
   // Container Batches (History of QR codes generated from Excel)
   getContainerBatches(): ContainerBatch[] {
     const raw = localStorage.getItem(CONTAINER_BATCHES_KEY);

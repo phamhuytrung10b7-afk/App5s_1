@@ -294,18 +294,6 @@ export const ProductivityReport: React.FC<ProductivityReportProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Demo scan seed button if empty */}
-          {items.length === 0 && (
-            <button
-              onClick={handleSeedSampleScans}
-              className="flex items-center space-x-2 bg-amber-500 hover:bg-amber-600 text-white px-3.5 py-2 rounded-xl text-xs font-black shadow-xs transition-all cursor-pointer"
-              title="Tải dữ liệu quét bóc tách mẫu để thử nghiệm báo cáo"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Nạp Quét Mẫu</span>
-            </button>
-          )}
-
           {/* Inventory Excel Export */}
           <button
             onClick={onExportInventoryExcel}
@@ -536,13 +524,6 @@ export const ProductivityReport: React.FC<ProductivityReportProps> = ({
                       <p className="text-xs text-slate-500">
                         Khi người bóc tách thực hiện quét mã QR thẻ thùng Kitting Smart đưa linh kiện lên kệ OUTBUFFER thành công, linh kiện sẽ tự động ghi nhận và xuất hiện tại đây.
                       </p>
-                      <button
-                        onClick={handleSeedSampleScans}
-                        className="inline-flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-                      >
-                        <Sparkles className="w-4 h-4" />
-                        <span>Nạp Dữ Liệu Quét Mẫu Để Thử Nghiệm</span>
-                      </button>
                     </div>
                   </td>
                 </tr>

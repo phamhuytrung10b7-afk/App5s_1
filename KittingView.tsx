@@ -6,6 +6,8 @@ import { PART_GROUP_COLORS, getPartGroupConfig } from './partGroupColors';
 import { ContainerTagManagerModal } from './ContainerTagManagerModal';
 import { CustomTagManagerModal } from './CustomTagManagerModal';
 import { InlineQrScanner } from './InlineQrScanner';
+import { findLocationMatch } from './StockInView';
+import { normalizeLocationStr } from './StockOutScanModal';
 import {
   Scissors,
   CheckCircle2,
@@ -91,6 +93,9 @@ export const KittingView: React.FC<KittingViewProps> = ({
       exceptionNote?: string;
     };
   } | null>(null);
+
+  // Compact Toast Notification
+  const [compactToast, setCompactToast] = useState<string | null>(null);
 
   useEffect(() => {
     const loaded = storageService.getMasterContainerTags();
@@ -291,7 +296,38 @@ export const KittingView: React.FC<KittingViewProps> = ({
 
   // Execution & Strict Queue Validation for Smart Kitting
   const executeSmartKitting = (chosenBuffer?: string) => {
-    const finalBuffer = chosenBuffer || targetBuffer;
+    const finalBufferRaw = (chosenBuffer || targetBuffer).trim();
+
+    if (!finalBufferRaw) {
+      setResultModal({
+        isOpen: true,
+        isSuccess: false,
+        title: 'BÓC TÁCH THẤT BẠI',
+        message: '⚠️ Vui lòng quét hoặc chọn vị trí Kệ Outbuffer!',
+      });
+      return;
+    }
+
+    // STRICT VALIDATION: Check if finalBufferRaw matches a valid buffer or system location
+    const matchedBuf = buffers.find(
+      (b) =>
+        b.locationId.toLowerCase() === finalBufferRaw.toLowerCase() ||
+        (b.locationName && b.locationName.toLowerCase() === finalBufferRaw.toLowerCase()) ||
+        normalizeLocationStr(b.locationId) === normalizeLocationStr(finalBufferRaw)
+    );
+    const matchedSettingsLoc = findLocationMatch(finalBufferRaw, settings.locations || []);
+
+    if (!matchedBuf && !matchedSettingsLoc) {
+      setResultModal({
+        isOpen: true,
+        isSuccess: false,
+        title: 'BÓC TÁCH THẤT BẠI',
+        message: `❌ MÃ KỆ OUTBUFFER KHÔNG TỒN TẠI! Vị trí kệ "${finalBufferRaw}" KHÔNG CÓ TRONG DANH MỤC kệ Outbuffer / Kệ kho đã khai báo trong hệ thống. Vui lòng chọn hoặc quét kệ hợp lệ!`,
+      });
+      return;
+    }
+
+    const finalBuffer = matchedBuf ? matchedBuf.locationId : matchedSettingsLoc ? matchedSettingsLoc.name : finalBufferRaw;
 
     if (!partCode) {
       setResultModal({
@@ -470,22 +506,11 @@ export const KittingView: React.FC<KittingViewProps> = ({
 
       const overrideNote = isQtyDifference ? ` (Ghi đè: ${exceptionReason})` : '';
 
-      // Show PROMINENT SUCCESS RESULT MODAL (OK)
-      setResultModal({
-        isOpen: true,
-        isSuccess: true,
-        title: 'BÓC TÁCH KITTING THÀNH CÔNG (OK)',
-        message: `Đã hoàn tất bóc tách ${actualQty} ${unit} [${partCode}] và chuyển thành công lên Kệ OUTBUFFER!`,
-        details: {
-          partCode,
-          partName: partName || partCode,
-          qty: actualQty,
-          unit,
-          bufferLocation: finalBuffer,
-          operatorName: operator,
-          exceptionNote: overrideNote,
-        },
-      });
+      // Show compact small notification toast and close popup modal
+      setCompactToast(
+        `✅ BÓC TÁCH KITTING THÀNH CÔNG: +${actualQty} ${unit} [${partCode}] ➔ Kệ Outbuffer [${finalBuffer}].`
+      );
+      setIsAutoKittingModalOpen(false);
 
       // Reset form
       setScannedTag(null);
@@ -515,8 +540,28 @@ export const KittingView: React.FC<KittingViewProps> = ({
   // Auto-confirm execution when Rack QR is scanned via Scanner/Camera
   const handleScanBufferQrSuccess = (scannedText: string) => {
     const clean = scannedText.trim();
-    const matched = buffers.find((b) => b.locationId.toLowerCase() === clean.toLowerCase());
-    const selectedBuf = matched ? matched.locationId : clean.toUpperCase();
+    if (!clean) return;
+
+    const matchedBuf = buffers.find(
+      (b) =>
+        b.locationId.toLowerCase() === clean.toLowerCase() ||
+        (b.locationName && b.locationName.toLowerCase() === clean.toLowerCase()) ||
+        normalizeLocationStr(b.locationId) === normalizeLocationStr(clean)
+    );
+    const matchedSettingsLoc = findLocationMatch(clean, settings.locations || []);
+
+    if (!matchedBuf && !matchedSettingsLoc) {
+      setIsBufferQrScanning(false);
+      setResultModal({
+        isOpen: true,
+        isSuccess: false,
+        title: 'BÓC TÁCH THẤT BẠI',
+        message: `❌ MÃ KỆ OUTBUFFER KHÔNG TỒN TẠI! Mã QR kệ "${clean}" KHÔNG TỒN TẠI trong danh mục kệ kho / Outbuffer của hệ thống. Vui lòng quét đúng mã QR kệ hợp lệ!`,
+      });
+      return;
+    }
+
+    const selectedBuf = matchedBuf ? matchedBuf.locationId : matchedSettingsLoc ? matchedSettingsLoc.name : clean;
     setTargetBuffer(selectedBuf);
     setIsBufferQrScanning(false);
 
@@ -603,6 +648,23 @@ export const KittingView: React.FC<KittingViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Compact Toast Notification */}
+      {compactToast && (
+        <div className="p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-400 text-emerald-950 text-xs sm:text-sm font-bold flex items-center justify-between shadow-xs animate-in zoom-in-95">
+          <div className="flex items-center space-x-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 text-lg" />
+            <span>{compactToast}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCompactToast(null)}
+            className="text-emerald-700 hover:text-emerald-900 font-bold px-2.5 py-1 rounded-lg bg-emerald-200/80 hover:bg-emerald-300 cursor-pointer text-xs"
+          >
+            ✕ Đóng
+          </button>
+        </div>
+      )}
 
       {/* Main Navigation Tabs */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
@@ -1136,19 +1198,40 @@ export const KittingView: React.FC<KittingViewProps> = ({
 
                 <div>
                   <label className="block font-bold text-slate-800 mb-1">
-                    📍 VỊ TRÍ KỆ OUTBUFFER LẤY / CẤP <span className="text-rose-500">*</span>
+                    📍 VỊ TRÍ KỆ OUTBUFFER LẤY / CẤP (QUÉT / CHỌN KỆ) <span className="text-rose-500">*</span>
                   </label>
-                  <select
-                    value={targetBuffer}
-                    onChange={(e) => setTargetBuffer(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-blue-50 border-2 border-blue-300 rounded-xl font-extrabold text-blue-900 text-sm outline-hidden cursor-pointer"
-                  >
-                    {buffers.map((b) => (
-                      <option key={b.locationId} value={b.locationId}>
-                        📍 {b.locationId} {b.partCode ? `(Đã có ${b.partCode})` : '(Kệ trống)'}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={targetBuffer}
+                      onChange={(e) => setTargetBuffer(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          executeSmartKitting(targetBuffer);
+                        }
+                      }}
+                      placeholder="Quét hoặc gõ mã kệ (VD: BUFFER-A1-01)..."
+                      className="flex-1 px-3 py-2.5 bg-blue-50 border-2 border-blue-300 rounded-xl font-mono font-bold text-blue-900 text-xs focus:ring-2 focus:ring-blue-500 outline-hidden"
+                    />
+                    <select
+                      value={targetBuffer}
+                      onChange={(e) => {
+                        setTargetBuffer(e.target.value);
+                        executeSmartKitting(e.target.value);
+                      }}
+                      className="px-2.5 py-2.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-800 text-xs cursor-pointer shrink-0"
+                    >
+                      {buffers.map((b) => (
+                        <option key={b.locationId} value={b.locationId}>
+                          📍 {b.locationId} {b.partCode ? `(${b.partCode})` : '(Kệ trống)'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="text-[10px] text-blue-700 font-medium mt-1">
+                    * Bắn súng quét QR kệ hoặc chọn dropdown để <strong>TỰ ĐỘNG XÁC NHẬN</strong>.
+                  </p>
                 </div>
               </div>
 

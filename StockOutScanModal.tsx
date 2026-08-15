@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Part, AppSettings } from './types';
 import { storageService } from './storage';
 import { LocationCameraScannerModal } from './LocationCameraScannerModal';
+import { findLocationMatch } from './StockInView';
 import {
   X,
   CheckCircle2,
@@ -183,45 +184,104 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
     }
   }
 
-  const handleFormSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const [errorPopup, setErrorPopup] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+  } | null>(null);
 
-    if (!scannedLocation.trim()) {
-      setLocationError('⚠️ Bắt buộc phải quét hoặc chọn Vị trí Kệ trước khi xuất kho!');
+  const triggerAutoConfirmIfValid = (targetLocationStr: string) => {
+    const cleanStr = targetLocationStr.trim();
+    if (!cleanStr) return;
+
+    const normScannedLoc = normalizeLocationStr(cleanStr);
+    const normExpectedLoc = normalizeLocationStr(expectedFifoLocationName);
+
+    // 1. First check if location exists in system settings or active FIFO locations
+    const foundInSettings = findLocationMatch(cleanStr, settings.locations || []);
+    const matchedInActive = activeLocations.find(
+      (l) =>
+        normalizeLocationStr(l.locationName) === normScannedLoc ||
+        l.locationName.toLowerCase() === cleanStr.toLowerCase()
+    );
+
+    // If it's NOT found in system settings, AND NOT in active locations for this part, REJECT IT!
+    if (!foundInSettings && !matchedInActive && normScannedLoc !== normExpectedLoc) {
+      setErrorPopup({
+        isOpen: true,
+        title: '❌ MÃ KỆ KHÔNG TỒN TẠI TRONG HỆ THỐNG',
+        message: `Mã QR vị trí kệ "${cleanStr}" KHÔNG TỒN TẠI trong danh mục kệ kho của hệ thống. Vui lòng nhập hoặc quét đúng mã QR kệ hợp lệ!`,
+      });
       return;
     }
 
-    if (!isLocationValid) {
-      setLocationError(
-        validationMessage ||
-          `❌ Sai vị trí kệ! Cần quét đúng kệ [${expectedFifoLocationName}] để bảo đảm nguyên tắc FIFO!`
-      );
-      return;
+    // 2. Next check FIFO rule matching
+    let locValid = false;
+    if (
+      normScannedLoc === normExpectedLoc ||
+      (foundInSettings && normalizeLocationStr(foundInSettings.name) === normExpectedLoc)
+    ) {
+      locValid = true;
+    } else if (activeLocations.length === 1 && (normalizeLocationStr(activeLocations[0].locationName) === normScannedLoc || matchedInActive)) {
+      locValid = true;
+    } else if (matchedInActive && activeLocations.length <= 1) {
+      locValid = true;
     }
 
     const numQty = Number(qty);
+
+    if (!locValid) {
+      setErrorPopup({
+        isOpen: true,
+        title: '❌ SAI VỊ TRÍ KỆ FIFO',
+        message: `Vị trí vừa quét "${cleanStr}" KHÔNG KHỚP với vị trí kệ ưu tiên xuất hàng FIFO [${expectedFifoLocationName}]. Vui lòng kiểm tra và quét đúng kệ FIFO!`,
+      });
+      return;
+    }
+
     if (!qty || isNaN(numQty) || numQty <= 0) {
-      setLocationError('⚠️ Vui lòng nhập số lượng cần xuất (lớn hơn 0)!');
+      setErrorPopup({
+        isOpen: true,
+        title: '⚠️ THIẾU SỐ LƯỢNG XUẤT KHO',
+        message: 'Vui lòng nhập Số Lượng cần xuất lớn hơn 0 trước khi quét Vị Trí Kệ!',
+      });
       return;
     }
 
     if (numQty > part.currentStock) {
-      setLocationError(
-        `⚠️ Số lượng xuất (${numQty} ${part.unit}) vượt quá tồn kho thực tế (${part.currentStock} ${part.unit})!`
-      );
+      setErrorPopup({
+        isOpen: true,
+        title: '⚠️ SỐ LƯỢNG VƯỢT QUÁ TỒN KHO',
+        message: `Số lượng xuất (${numQty} ${part.unit}) vượt quá tồn kho thực tế (${part.currentStock} ${part.unit})!`,
+      });
       return;
     }
 
-    // Call confirm
+    // ALL VALID -> AUTO SUBMIT IMMEDIATELY!
     onConfirm({
       part,
       qty: numQty,
-      location: scannedLocation.trim() || expectedFifoLocationName,
+      location: targetLocationStr.trim() || expectedFifoLocationName,
       person,
       productionOrder,
       purpose,
       notes,
     });
+  };
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!scannedLocation.trim()) {
+      setErrorPopup({
+        isOpen: true,
+        title: '⚠️ THIẾU VỊ TRÍ KỆ',
+        message: 'Bắt buộc phải quét hoặc chọn Vị trí Kệ trước khi xuất kho!',
+      });
+      return;
+    }
+
+    triggerAutoConfirmIfValid(scannedLocation);
   };
 
   const handleQtyKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -385,6 +445,7 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
                     onClick={() => {
                       setScannedLocation(loc.locationName);
                       setLocationError(null);
+                      triggerAutoConfirmIfValid(loc.locationName);
                     }}
                     className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
                       scannedLocation === loc.locationName
@@ -409,6 +470,12 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
                     setScannedLocation(e.target.value);
                     setLocationError(null);
                   }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      triggerAutoConfirmIfValid(scannedLocation);
+                    }
+                  }}
                   placeholder={`[Bắn súng quét hoặc bấm Quét Camera] Ví dụ: ${expectedFifoLocationName}...`}
                   className={`w-full pl-10 pr-28 py-3 bg-white border-2 rounded-xl text-sm font-bold text-slate-900 outline-hidden transition-all ${
                     isLocationValid && scannedLocation
@@ -426,6 +493,7 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
                     if (e.target.value) {
                       setScannedLocation(e.target.value);
                       setLocationError(null);
+                      triggerAutoConfirmIfValid(e.target.value);
                     }
                   }}
                   value=""
@@ -567,10 +635,37 @@ export const StockOutScanModal: React.FC<StockOutScanModalProps> = ({
           onScanSuccess={(scannedText) => {
             setScannedLocation(scannedText);
             setLocationError(null);
+            triggerAutoConfirmIfValid(scannedText);
           }}
           title="Quét Mã QR / Barcode Vị Trí Kệ"
           hintText="Căn giữa mã QR / Barcode dán trên Kệ vào khung hình"
         />
+
+        {/* ERROR POPUP MODAL */}
+        {errorPopup && errorPopup.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border-2 border-rose-500 text-center space-y-4 animate-in zoom-in-95">
+              <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mx-auto border-4 border-rose-200">
+                <AlertCircle className="w-10 h-10 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-rose-700 uppercase tracking-tight">
+                  {errorPopup.title}
+                </h3>
+                <p className="text-xs sm:text-sm font-semibold text-slate-700 mt-2 leading-relaxed">
+                  {errorPopup.message}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setErrorPopup(null)}
+                className="w-full py-3 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer"
+              >
+                ĐÓNG & KIỂM TRA LẠI
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

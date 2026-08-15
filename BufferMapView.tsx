@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
-import { BufferLocationMap, BufferPartItem } from './types';
+import { BufferLocationMap, BufferPartItem, WarehouseLocation } from './types';
 import { storageService } from './storage';
+import { LocationQrPrintModal } from './LocationQrPrintModal';
 import {
   LayoutGrid,
   QrCode,
@@ -38,6 +39,17 @@ export const BufferMapView: React.FC<BufferMapViewProps> = ({ buffers, onRefresh
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
   const [filterPart, setFilterPart] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Print QR Location Modal state
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [printInitialLocId, setPrintInitialLocId] = useState<string | undefined>(undefined);
+
+  // Convert buffer locations to WarehouseLocation list for printing
+  const bufferLocationsAsWarehouseLocs: WarehouseLocation[] = buffers.map((b) => ({
+    id: b.locationId,
+    name: b.locationId,
+    description: b.description || (b.modelName ? `Model: ${b.modelName}` : 'Kệ Outbuffer'),
+  }));
 
   // Assembly lines list from Settings
   const settings = storageService.getSettings();
@@ -357,6 +369,19 @@ export const BufferMapView: React.FC<BufferMapViewProps> = ({ buffers, onRefresh
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               type="button"
+              onClick={() => {
+                setPrintInitialLocId(undefined);
+                setIsPrintModalOpen(true);
+              }}
+              className="px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-black rounded-2xl shadow-lg transition-all cursor-pointer flex items-center space-x-2 text-xs border border-indigo-400/30"
+              title="In tem QR mã kệ Outbuffer dán lên khoang kệ để quét bóc tách Kitting Smart"
+            >
+              <QrCode className="w-4 h-4 text-amber-300" />
+              <span>In Tem QR Kệ Outbuffer</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setIsAddShelfOpen(true)}
               className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-amber-950 font-black rounded-2xl shadow-md transition-all cursor-pointer flex items-center space-x-2 text-xs"
             >
@@ -484,17 +509,32 @@ export const BufferMapView: React.FC<BufferMapViewProps> = ({ buffers, onRefresh
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenEditModal(buf);
-                    }}
-                    className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-white/60 rounded-lg cursor-pointer"
-                    title="Bấm để xem chi tiết & Gọi hàng"
-                  >
-                    <Edit3 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center space-x-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPrintInitialLocId(buf.locationId);
+                        setIsPrintModalOpen(true);
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg cursor-pointer transition-colors"
+                      title="In tem QR riêng cho kệ này"
+                    >
+                      <QrCode className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenEditModal(buf);
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-white/60 rounded-lg cursor-pointer"
+                      title="Bấm để xem chi tiết & Gọi hàng"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Location Description */}
@@ -676,13 +716,28 @@ export const BufferMapView: React.FC<BufferMapViewProps> = ({ buffers, onRefresh
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedBuffer(null)}
-                className="text-emerald-200 hover:text-white p-2 rounded-xl cursor-pointer text-lg"
-              >
-                ✕
-              </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPrintInitialLocId(selectedBuffer.locationId);
+                    setIsPrintModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center space-x-1.5 border border-indigo-400/30"
+                  title="In tem QR dán kệ này"
+                >
+                  <QrCode className="w-3.5 h-3.5 text-amber-300" />
+                  <span>In Tem QR Kệ</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedBuffer(null)}
+                  className="text-emerald-200 hover:text-white p-2 rounded-xl cursor-pointer text-lg"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             {/* Modal Sub-Header Tabs */}
@@ -1019,6 +1074,15 @@ export const BufferMapView: React.FC<BufferMapViewProps> = ({ buffers, onRefresh
           </div>
         </div>
       )}
+
+      {/* Location QR Code Labels Print Modal for OUTBUFFER shelves */}
+      <LocationQrPrintModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        locations={bufferLocationsAsWarehouseLocs}
+        settings={settings}
+        initialSelectedId={printInitialLocId}
+      />
     </div>
   );
 };

@@ -179,6 +179,12 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   const stopCamera = async () => {
     if (html5QrcodeRef.current) {
       try {
+        const stream = (html5QrcodeRef.current as any).mediaStream as MediaStream;
+        if (stream) {
+          stream.getTracks().forEach((track) => {
+            try { track.stop(); } catch (e) {}
+          });
+        }
         if (html5QrcodeRef.current.isScanning) {
           await html5QrcodeRef.current.stop();
         }
@@ -330,9 +336,87 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className="p-6 space-y-5">
+        <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+          {/* Camera Scanner Toggle & Live View Container (At top for fast scanning) */}
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={isCameraActive ? stopCamera : () => startCamera()}
+              className={`w-full py-3 rounded-2xl text-xs font-extrabold transition-all flex items-center justify-center space-x-2 cursor-pointer border shadow-sm ${
+                isCameraActive
+                  ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-500 animate-pulse'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500'
+              }`}
+            >
+              <Camera className="w-4 h-4" />
+              <span>{isCameraActive ? 'Tắt Camera Quét' : 'Bật Camera Quét Nét Cao'}</span>
+            </button>
+
+            {isCameraActive && (
+              <div className="bg-slate-950 text-white p-3 rounded-2xl border-2 border-emerald-500 space-y-2 animate-in zoom-in-95 duration-200">
+                <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                  {cameras.length > 1 && (
+                    <div className="flex items-center space-x-1 flex-1">
+                      <SwitchCamera className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <select
+                        value={selectedCameraId}
+                        onChange={(e) => {
+                          setSelectedCameraId(e.target.value);
+                          startCamera(e.target.value);
+                        }}
+                        className="bg-slate-800 text-emerald-300 font-bold text-xs py-1 px-2 rounded-lg border border-slate-700 outline-none w-full max-w-xs"
+                      >
+                        {cameras.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {torchSupported && (
+                    <button
+                      type="button"
+                      onClick={toggleTorch}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1 cursor-pointer transition-all ${
+                        isTorchOn ? 'bg-amber-400 text-slate-950 font-black' : 'bg-slate-800 text-amber-300 border border-amber-500/30'
+                      }`}
+                    >
+                      <Flashlight className="w-3.5 h-3.5" />
+                      <span>{isTorchOn ? 'TẮT FLASH' : 'FLASH'}</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="relative w-full rounded-xl overflow-hidden border border-slate-800 bg-black min-h-[250px] max-h-[350px] flex items-center justify-center">
+                  <div id="qr-reader" className="w-full h-full min-h-[250px]"></div>
+
+                  {/* Target Frame Overlay */}
+                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-4">
+                    <div className="w-52 h-44 border-2 border-emerald-400/60 rounded-2xl relative shadow-2xl flex items-center justify-center">
+                      <div className="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-emerald-400 rounded-tl-lg"></div>
+                      <div className="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-emerald-400 rounded-tr-lg"></div>
+                      <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-emerald-400 rounded-bl-lg"></div>
+                      <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-emerald-400 rounded-br-lg"></div>
+                      <div className="w-full h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-pulse shadow-lg shadow-emerald-400/50"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-center text-emerald-300 font-bold">
+                  Căn mã QR / Barcode vào khung xanh để hệ thống tự động quét
+                </p>
+              </div>
+            )}
+
+            {cameraError && (
+              <p className="text-xs text-red-600 mt-2 font-medium">{cameraError}</p>
+            )}
+          </div>
+
           {/* Barcode Gun / Manual Input Box */}
-          <form onSubmit={handleCodeSubmit} className="space-y-2">
+          <form onSubmit={handleCodeSubmit} className="space-y-2 pt-2 border-t border-slate-100">
             <label className="block text-xs font-bold text-slate-700 flex items-center justify-between">
               <span>Súng Quét Barcode / Nhập Mã QR nhanh</span>
               <span className="text-[11px] text-blue-600 font-normal">Hỗ trợ tự động điền</span>
@@ -418,65 +502,6 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
               <span>Chưa tìm thấy mã linh kiện khớp với <strong>"{manualCode}"</strong></span>
             </div>
           ) : null}
-
-          {/* Camera Scanner Container */}
-          <div className="pt-2 border-t border-slate-100 space-y-3">
-            <button
-              type="button"
-              onClick={isCameraActive ? stopCamera : () => startCamera()}
-              className={`w-full py-3 rounded-2xl text-xs font-extrabold transition-all flex items-center justify-center space-x-2 cursor-pointer border shadow-sm ${
-                isCameraActive
-                  ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                  : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500'
-              }`}
-            >
-              <Camera className="w-4 h-4" />
-              <span>{isCameraActive ? 'Tắt Camera Quét' : 'Bật Camera Quét Nét Cao'}</span>
-            </button>
-
-            <div className={isCameraActive ? 'block space-y-2' : 'hidden'}>
-              <div className="flex items-center justify-between bg-slate-900 text-white p-2 rounded-xl text-xs">
-                {cameras.length > 1 && (
-                  <div className="flex items-center space-x-1 flex-1">
-                    <SwitchCamera className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <select
-                      value={selectedCameraId}
-                      onChange={(e) => {
-                        setSelectedCameraId(e.target.value);
-                        startCamera(e.target.value);
-                      }}
-                      className="bg-slate-800 text-emerald-300 font-bold text-xs py-1 px-2 rounded-lg border border-slate-700 outline-none w-full max-w-xs"
-                    >
-                      {cameras.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {torchSupported && (
-                  <button
-                    type="button"
-                    onClick={toggleTorch}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1 cursor-pointer transition-all ${
-                      isTorchOn ? 'bg-amber-400 text-slate-950 font-black' : 'bg-slate-800 text-amber-300 border border-amber-500/30'
-                    }`}
-                  >
-                    <Flashlight className="w-3.5 h-3.5" />
-                    <span>{isTorchOn ? 'TẮT FLASH' : 'BẬT FLASH'}</span>
-                  </button>
-                )}
-              </div>
-
-              <div id="qr-reader" className="w-full rounded-2xl overflow-hidden border-2 border-emerald-500 bg-black min-h-[280px]"></div>
-            </div>
-
-            {cameraError && (
-              <p className="text-xs text-red-600 mt-2 font-medium">{cameraError}</p>
-            )}
-          </div>
         </div>
 
         {/* Footer */}

@@ -47,6 +47,7 @@ export const InlineQrScanner: React.FC<InlineQrScannerProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraContainerRef = useRef<HTMLDivElement>(null);
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const qrContainerId = `inline-qr-reader-${mode}`;
 
@@ -65,6 +66,12 @@ export const InlineQrScanner: React.FC<InlineQrScannerProps> = ({
   const stopCamera = async () => {
     if (html5QrCodeRef.current) {
       try {
+        const stream = (html5QrCodeRef.current as any).mediaStream as MediaStream;
+        if (stream) {
+          stream.getTracks().forEach((track) => {
+            try { track.stop(); } catch (e) {}
+          });
+        }
         if (html5QrCodeRef.current.isScanning) {
           await html5QrCodeRef.current.stop();
         }
@@ -273,8 +280,10 @@ export const InlineQrScanner: React.FC<InlineQrScannerProps> = ({
     if (isCameraActive) {
       stopCamera();
     } else {
+      setIsCameraActive(true);
       setTimeout(() => {
         startCameraInstance();
+        cameraContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 100);
     }
   };
@@ -341,7 +350,7 @@ export const InlineQrScanner: React.FC<InlineQrScannerProps> = ({
             onClick={toggleCamera}
             className={`px-3 py-2 rounded-xl font-extrabold text-xs transition-all flex items-center space-x-1.5 cursor-pointer shadow-md ${
               isCameraActive 
-                ? 'bg-rose-600 hover:bg-rose-700 text-white' 
+                ? 'bg-rose-600 hover:bg-rose-700 text-white animate-pulse' 
                 : 'bg-emerald-600 hover:bg-emerald-700 text-white'
             }`}
           >
@@ -361,6 +370,103 @@ export const InlineQrScanner: React.FC<InlineQrScannerProps> = ({
           )}
         </div>
       </div>
+
+      {/* Camera Live View element - RENDERED AT TOP WHEN ACTIVE */}
+      {isCameraActive && (
+        <div
+          ref={cameraContainerRef}
+          className="bg-slate-950 text-white p-3.5 sm:p-4 rounded-2xl border-2 border-emerald-500 shadow-xl space-y-3 animate-in zoom-in-95 duration-200"
+        >
+          {/* Camera Header & Controls Toolbar */}
+          <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+            <div className="flex items-center space-x-2">
+              <div className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-lg animate-pulse">
+                <Camera className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="font-extrabold text-xs text-white uppercase tracking-wide">
+                  ĐANG MỞ CAMERA QUÉT MÃ
+                </h4>
+                <p className="text-[10px] text-emerald-300 font-medium">
+                  Căn mã QR / Barcode vào khung xanh bên dưới
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              {torchSupported && (
+                <button
+                  type="button"
+                  onClick={toggleTorch}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1 cursor-pointer transition-all ${
+                    isTorchOn
+                      ? 'bg-amber-400 text-slate-950 font-black shadow-md'
+                      : 'bg-slate-800 text-amber-300 border border-amber-500/30'
+                  }`}
+                >
+                  <Flashlight className="w-3.5 h-3.5" />
+                  <span>{isTorchOn ? 'TẮT FLASH' : 'FLASH'}</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={stopCamera}
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl transition-all flex items-center space-x-1 cursor-pointer shadow-md"
+              >
+                <X className="w-4 h-4" />
+                <span>Tắt Camera</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Camera Device Switcher */}
+          {cameras.length > 1 && (
+            <div className="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
+              <SwitchCamera className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="text-[11px] font-bold text-slate-300 shrink-0">Đổi Camera:</span>
+              <select
+                value={selectedCameraId}
+                onChange={(e) => {
+                  setSelectedCameraId(e.target.value);
+                  startCameraInstance(e.target.value);
+                }}
+                className="bg-slate-800 text-emerald-300 font-bold text-xs py-1 px-2 rounded-lg border border-slate-700 outline-none w-full"
+              >
+                {cameras.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Video Container with Target Scanning Frame */}
+          <div className="relative w-full rounded-xl overflow-hidden bg-black min-h-[260px] max-h-[380px] flex items-center justify-center border border-slate-800">
+            <div id={qrContainerId} className="w-full h-full min-h-[260px]"></div>
+
+            {/* Target Reticle Frame Overlay */}
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-4">
+              <div className="w-56 h-48 border-2 border-emerald-400/60 rounded-2xl relative shadow-2xl flex items-center justify-center">
+                {/* Corner Brackets */}
+                <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-emerald-400 rounded-tl-lg"></div>
+                <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-emerald-400 rounded-tr-lg"></div>
+                <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-emerald-400 rounded-bl-lg"></div>
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-emerald-400 rounded-br-lg"></div>
+                
+                {/* Laser Scanning Line */}
+                <div className="w-full h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-pulse shadow-lg shadow-emerald-400/50"></div>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-center text-emerald-300 font-bold flex items-center justify-center space-x-1 pt-0.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block mr-1"></span>
+            <span>Tự động quét QR Code & Barcode 1D/2D Siêu Nét</span>
+          </p>
+        </div>
+      )}
 
       {/* Main Scan Input Box */}
       <div className="space-y-2">
@@ -394,52 +500,6 @@ export const InlineQrScanner: React.FC<InlineQrScannerProps> = ({
         <p className="text-[11px] text-slate-500 flex items-center space-x-1 font-medium">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block mr-1"></span>
           <span>Súng quét USB/Bluetooth tự động điền & nhấn Enter. Không cần thao tác chuột.</span>
-        </p>
-      </div>
-
-      {/* Camera Live View element */}
-      <div className={`bg-slate-900 text-white p-3.5 rounded-2xl border-2 border-slate-700 space-y-3 ${isCameraActive ? 'block' : 'hidden'}`}>
-        {/* Camera Toolbar */}
-        <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
-          {cameras.length > 1 && (
-            <div className="flex items-center space-x-1.5 flex-1">
-              <SwitchCamera className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <select
-                value={selectedCameraId}
-                onChange={(e) => {
-                  setSelectedCameraId(e.target.value);
-                  startCameraInstance(e.target.value);
-                }}
-                className="bg-slate-800 text-emerald-300 font-bold text-xs py-1 px-2 rounded-lg border border-slate-700 outline-none w-full max-w-xs"
-              >
-                {cameras.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {torchSupported && (
-            <button
-              type="button"
-              onClick={toggleTorch}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1 cursor-pointer transition-all ${
-                isTorchOn ? 'bg-amber-400 text-slate-950 font-black' : 'bg-slate-800 text-amber-300 border border-amber-500/30'
-              }`}
-            >
-              <Flashlight className="w-3.5 h-3.5" />
-              <span>{isTorchOn ? 'TẮT FLASH' : 'BẬT FLASH'}</span>
-            </button>
-          )}
-        </div>
-
-        <div id={qrContainerId} className="w-full rounded-xl overflow-hidden min-h-[280px] bg-black"></div>
-
-        <p className="text-[11px] text-center text-emerald-300 font-bold flex items-center justify-center space-x-1">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block mr-1"></span>
-          <span>Tự động quét QR Code & Barcode 1D/2D Siêu Nét</span>
         </p>
       </div>
 

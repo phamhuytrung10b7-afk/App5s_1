@@ -205,16 +205,6 @@ export const PartsListView: React.FC<PartsListViewProps> = ({
             <span>Xuất Excel</span>
           </button>
 
-          {/* Container Import & QR Print Button */}
-          <button
-            onClick={() => setIsContModalOpen(true)}
-            className="flex items-center space-x-1.5 px-3 py-2 bg-gradient-to-r from-teal-600 to-emerald-700 hover:from-teal-700 hover:to-emerald-800 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer"
-            title="In tem tên + mã + SL theo file Excel Danh Mục Cont"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-amber-300" />
-            <span>In Tem QR Cont (File Excel)</span>
-          </button>
-
           {/* Batch Print QR Labels button */}
           <button
             onClick={() => setIsBatchPrintModalOpen(true)}
